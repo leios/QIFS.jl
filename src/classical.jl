@@ -2,7 +2,9 @@
  Purpose: This file is meant to cover all the classical methods from the 
           QIFS paper: https://journals.aps.org/pre/abstract/10.1103/PhysRevE.68.046110
 
-   Notes: Examples 1-3
+   Notes: Examples 1-5;
+          4 is nontrivial as it requires projections on to 2D
+          5 is does not converge
 #-----------------------------------------------------------------------------=#
 
 cantor_1(x) = x/3
@@ -107,3 +109,24 @@ function example_3()
 
     return arr
 end
+
+#=-----------------------------------------------------------------------------#
+EXAMPLE_5
+#-----------------------------------------------------------------------------=#
+
+tent_map(x) = x < 0.5 ? 2*x : 2*(1-x)
+bernoulli_map(x) = x < 0.5 ? 2*x : 2x-1
+
+function example_5()
+    pt = rand()
+    res = 100
+    arr = zeros(res)
+    for i = 1:1000
+        pt = rand((tent_map, bernoulli_map))(pt)
+        bin = floor(Int, pt*res)+1
+        arr[bin] += 1
+    end
+
+    return arr
+end
+
