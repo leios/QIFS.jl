@@ -130,3 +130,64 @@ function example_5()
     return arr
 end
 
+#=-----------------------------------------------------------------------------#
+AUX
+#-----------------------------------------------------------------------------=#
+
+function halfway(P, A)
+    return Point((P.x + A.x)*0.5, (P.y + A.y)*0.5)
+end
+
+function generate_square(A, B, C, D)
+
+    pt = Point(rand(), rand())
+    res = 10
+    arr = zeros(res, res)
+    for i = 1:1000
+        choice = rand((A, B, C, D))
+        pt = halfway(pt, choice)
+        bin_x = floor(Int, pt.x*res)+1
+        bin_y = floor(Int, pt.y*res)+1
+        arr[bin_x, bin_y] += 1
+    end 
+
+    return arr
+end
+
+function baker_1(P; a = 0.5)
+    #return Point(2 * P.x, a*P.y)
+    #return Point(0.5 * P.x, a*P.y)
+    return Point(0.5*(P.x + floor(2*P.y)), 2*P.y - floor(2*P.y))
+end
+
+function baker_2(P; a = 0.5)
+    #return Point(2 * P.x - 1, a*P.y + 0.5)
+    return Point(0.5 * P.x + 0.5, a*P.y + 0.5)
+end
+
+function generate_square_baker()
+
+    pt = Point(rand(), rand())
+    pts = [Point(rand(), rand()) for i = 1:100]
+    res = 10
+    arr = zeros(res, res)
+    for i = 1:60
+#=
+        if (pt.x < 0.5)
+            fx = baker_1
+        else
+            fx = baker_2
+        end
+        fx = rand((baker_1, baker_2))
+=#
+        pts = baker_1.(pts)
+        for i = 1:100
+            bin_x = floor(Int, (pts[i].x*0.5 + 0.25)*res)+1
+            bin_y = floor(Int, (pts[i].y*0.5 + 0.25)*res)+1
+            arr[bin_x, bin_y] += 1
+        end
+    end
+
+    return arr
+end
+
