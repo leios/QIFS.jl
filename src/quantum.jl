@@ -69,6 +69,21 @@ function coherent_state(N::Int64,q::Float64,p::Float64)
 
 end
 
+function transform_q2p(N::Int64)
+
+    mat = zeros(ComplexF64,N,N)
+
+    for k = 1:N
+        for n = 1:N 
+            mat[k,n] = exp(1im*2*pi*k*n/N)
+        end
+    end
+    mat .= mat/sqrt(N)
+
+    return mat
+
+end
+
 function map_G1234!(rhot::Matrix{ComplexF64},rhot_p::Matrix{ComplexF64},rhot1::Matrix{ComplexF64},rhot1_p::Matrix{ComplexF64},mat::Matrix{ComplexF64},L::Int64,N::Int64)
 
     rhot_p .= mat*rhot*mat' # rhot in p basis
@@ -96,6 +111,26 @@ function map_G1234!(rhot::Matrix{ComplexF64},rhot_p::Matrix{ComplexF64},rhot1::M
     end
 
     rhot .= rhot1*0.25 + mat'*rhot1_p*mat*0.25
+
+end
+
+function husimi_overlap(N::Int64,q::Float64,p::Float64)
+
+    overlap_qp = zeros(ComplexF64,N)
+
+    for n = 1:N
+        
+        for k = 1:N
+            braket_kkappa = exp(-pi/N*(k-N/2)^2) * exp(-1im*k*pi)
+            for j = 1:N
+                overlap_qp[n] += braket_kkappa * exp(1im*2*pi*(-j*n + (j-N*p+N/2)*(k+N*q-N/2))/N)
+            end
+        end
+
+    end
+    overlap_qp .= overlap_qp/N/(N/2)^(1/4)
+
+    return overlap_qp
 
 end
 
@@ -130,12 +165,13 @@ function save_overlap_qp_mat()
 
     # "husimi_format" takes time, and so compute it once and save it
 
-    L = 3^3
-    N = 3*L
+    # L = 3^3
+    N = 128 #3*L
     overlap_qp_mat, vec_q, vec_p = husimi_format(N)
 
     # save
-    jldsave("overlap_qp_mat_L27.jld2"; overlap_qp_mat)
+    # jldsave("overlap_qp_mat_L27.jld2"; overlap_qp_mat)
+    jldsave("overlap_qp_mat_N128.jld2"; overlap_qp_mat)
 
 end
 
@@ -210,6 +246,250 @@ function example_14()
 
 end
 
+#=-----------------------------------------------------------------------------#
+SQUARE
+#-----------------------------------------------------------------------------=#
+
+function map_half!(rho1,rho2,L,N)
+
+    rho2 .= 0.0
+
+    for i = 1:L
+        for j = 1:L
+
+            ii = i
+            jj = j
+
+            for n = 0:1
+                rho2[ii,jj] += rho1[mod1(2*ii+n,N),mod1(2*jj+n,N)]
+            end
+            
+        end
+    end
+
+end
+
+function test_half()
+
+    L = 2^6
+    N = 2*L
+
+    mat = transform_q2p(N)
+
+    # define initail state rho0
+    psi0 = coherent_state(N,0.6,0.6) # can be any state in principle but we choose a cherent state
+    # psi0 .= 0.0
+    # psi0[L]=1
+    # psi0 .= mat'*psi0
+    rho0 = psi0*psi0'
+
+    rho1 = copy(rho0)
+    rho2 = copy(rho0)
+
+    rho1 .= mat*rho1*mat'
+    map_half!(rho1,rho2,L,N)
+    rho2 .= mat'*rho2*mat
+    rho1 .= rho2
+    map_half!(rho1,rho2,L,N)
+    # rho2 .= mat'*rho2*mat
+
+    # overlap_qp_mat, vec_q, vec_p = husimi_format(N)
+    overlap_qp_mat = load("overlap_qp_mat_N128.jld2", "overlap_qp_mat") # run save_overlap_qp_mat first
+    vec_q = [0:1/N:1;] # technically this does not have to be this (I think)
+    vec_p = copy(vec_q)
+    
+    figure()
+    f_husimi = husimi(N,rho2,overlap_qp_mat)
+    pcolor(vec_q, vec_p, abs.(f_husimi)')
+    colorbar()
+
+    # return rho2
+
+end
+
+function map_square_test!(rhot::Matrix{ComplexF64},rhot1::Matrix{ComplexF64},rhot1_p::Matrix{ComplexF64},rhot2::Matrix{ComplexF64},rhot2_p::Matrix{ComplexF64},rhot3::Matrix{ComplexF64},rhot3_p::Matrix{ComplexF64},rhot4::Matrix{ComplexF64},rhot4_p::Matrix{ComplexF64},mat::Matrix{ComplexF64},M::Int64,L::Int64,N::Int64)
+
+    # input: rhot
+
+    # update: rhot1, rhot2, rhot3, rhot4 
+    #         rhot1_p, rhot2_p, rhot3_p, rhot4_p
+
+    # final output: rhot
+
+    rhot1 .= 0.0
+    rhot2 .= 0.0
+
+    for i = 1:L
+        for j = 1:L
+            i1 = i
+            j1 = j
+            # i1 = M + i
+            # j1 = M + j
+            # i2 = 3*M + i
+            # j2 = 3*M + j
+            for n = 0:1
+                rhot1[i1,j1] += rhot[mod1(2*i1+n,N),mod1(2*j1+n,N)] # A, C
+                # rhot2[i2,j2] += rhot[mod1(2*i2+n,N),mod1(2*j2+n,N)] # B, D
+            end            
+        end
+    end
+
+    return rhot1
+
+    rhot1 .= mat*rhot1*mat' # rhot1 in momentum basis
+    rhot2 .= mat*rhot2*mat'
+    rhot3 .= rhot1
+    rhot4 .= rhot2
+
+    rhot1_p .= 0.0
+    rhot2_p .= 0.0
+    rhot3_p .= 0.0
+    rhot4_p .= 0.0
+
+    for i = 1:L
+        for j = 1:L
+            i1 = M + i
+            j1 = M + j
+            i2 = 3*M + i
+            j2 = 3*M + j
+            for n = 0:1
+                rhot1_p[i1,j1] += rhot1[mod1(2*i1+n,N),mod1(2*j1+n,N)] # A
+                rhot2_p[i1,j1] += rhot2[mod1(2*i1+n,N),mod1(2*j1+n,N)] # B
+                rhot3_p[i2,j2] += rhot3[mod1(2*i2+n,N),mod1(2*j2+n,N)] # C
+                rhot4_p[i2,j2] += rhot4[mod1(2*i2+n,N),mod1(2*j2+n,N)] # D
+            end
+        end
+    end
+
+    rhot1 .= mat'*rhot1_p*mat # rhot1 in position basis
+    rhot2 .= mat'*rhot2_p*mat
+    rhot3 .= mat'*rhot3_p*mat
+    rhot4 .= mat'*rhot4_p*mat
+
+    rhot .= rhot1
+    # rhot .= rhot1*0.25 + rhot2*0.25 + rhot3*0.25 + rhot4*0.25
+
+end
+
+function map_square!(rhot::Matrix{ComplexF64},rhot1::Matrix{ComplexF64},rhot1_p::Matrix{ComplexF64},rhot2::Matrix{ComplexF64},rhot2_p::Matrix{ComplexF64},rhot3::Matrix{ComplexF64},rhot3_p::Matrix{ComplexF64},rhot4::Matrix{ComplexF64},rhot4_p::Matrix{ComplexF64},mat::Matrix{ComplexF64},M::Int64,L::Int64,N::Int64)
+
+    # input: rhot
+
+    # update: rhot1, rhot2, rhot3, rhot4 
+    #         rhot1_p, rhot2_p, rhot3_p, rhot4_p
+
+    # final output: rhot
+
+    rhot1 .= 0.0
+    rhot2 .= 0.0
+
+    for i = 1:L
+        for j = 1:L
+            i1 = M + i
+            j1 = M + j
+            i2 = 3*M + i
+            j2 = 3*M + j
+            for n = 0:1
+                rhot1[i1,j1] += rhot[mod1(2*i1+n,N),mod1(2*j1+n,N)] # A, C
+                rhot2[i2,j2] += rhot[mod1(2*i2+n,N),mod1(2*j2+n,N)] # B, D
+            end            
+        end
+    end
+
+    rhot1 .= mat*rhot1*mat' # rhot1 in momentum basis
+    rhot2 .= mat*rhot2*mat'
+    rhot3 .= rhot1
+    rhot4 .= rhot2
+
+    rhot1_p .= 0.0
+    rhot2_p .= 0.0
+    rhot3_p .= 0.0
+    rhot4_p .= 0.0
+
+    for i = 1:L
+        for j = 1:L
+            i1 = M + i
+            j1 = M + j
+            i2 = 3*M + i
+            j2 = 3*M + j
+            for n = 0:1
+                rhot1_p[i1,j1] += rhot1[mod1(2*i1+n,N),mod1(2*j1+n,N)] # A
+                rhot2_p[i1,j1] += rhot2[mod1(2*i1+n,N),mod1(2*j1+n,N)] # B
+                rhot3_p[i2,j2] += rhot3[mod1(2*i2+n,N),mod1(2*j2+n,N)] # C
+                rhot4_p[i2,j2] += rhot4[mod1(2*i2+n,N),mod1(2*j2+n,N)] # D
+            end
+        end
+    end
+
+    rhot1 .= mat'*rhot1_p*mat # rhot1 in position basis
+    rhot2 .= mat'*rhot2_p*mat
+    rhot3 .= mat'*rhot3_p*mat
+    rhot4 .= mat'*rhot4_p*mat
+
+    rhot .= rhot1
+    # rhot .= rhot1*0.25 + rhot2*0.25 + rhot3*0.25 + rhot4*0.25
+
+end
+
+function example_square()
+    
+    # vecA = [1/4,1/4]
+    # vecB = [3/4,1/4]
+    # vecC = [1/4,3/4]
+    # vecD = [3/4,3/4]
+
+    M = 2^4
+    L = 4*M
+    N = 2*L # system size
+    Nt = 1 # number of iteration
+
+    # define matrix to transform q basis to p basis (complex conjugate transposed matrix of this transforms p basis to q basis)
+    mat = transform_q2p(N)
+
+    # define initail state rho0
+    psi0 = coherent_state(N,0.5,0.5) # can be any state in principle but we choose a cherent state
+    psi0 .= 0.0
+    psi0[3*M]=1
+    # psi0 .= mat'*psi0
+    rho0 = psi0*psi0'
+
+    # define density matrices
+    rhot = copy(rho0) # time-evolved state to track
+    rhot1 = copy(rhot)
+    rhot1_p = copy(rhot)
+    rhot2 = copy(rhot)
+    rhot2_p = copy(rhot)
+    rhot3 = copy(rhot)
+    rhot3_p = copy(rhot)
+    rhot4 = copy(rhot)
+    rhot4_p = copy(rhot)
+
+    # measure time
+    t0 = time()
+
+    # iteration
+    for t = 1:Nt
+        # channel
+        map_square_test!(rhot,rhot1,rhot1_p,rhot2,rhot2_p,rhot3,rhot3_p,rhot4,rhot4_p,mat,M,L,N)
+    end
+    
+    # plot husimi
+
+    println("preparing for husimi")
+    # overlap_qp_mat, vec_q, vec_p = husimi_format(N)
+    overlap_qp_mat = load("overlap_qp_mat_N128.jld2", "overlap_qp_mat") # run save_overlap_qp_mat first
+    vec_q = [0:1/N:1;] # technically this does not have to be this (I think)
+    vec_p = copy(vec_q)
+    
+    figure()
+    f_husimi = husimi(N,rhot,overlap_qp_mat)
+    pcolor(vec_q, vec_p, abs.(f_husimi)')
+    colorbar()
+
+    println("total time:",round(time()-t0; digits = 3),"sec")
+
+end
+
 ################### no need to see ###################
 
 function map_G!(rhot,rhot1,L::Int64,N::Int64,ind::Int64)
@@ -220,8 +500,10 @@ function map_G!(rhot,rhot1,L::Int64,N::Int64,ind::Int64)
     for i = 1:L
         for j = 1:L
 
-            ii = 2*L*mod(ind+1,2)+i
-            jj = 2*L*mod(ind+1,2)+j
+            # ii = 2*L*mod(ind+1,2)+i
+            # jj = 2*L*mod(ind+1,2)+j
+            ii = i
+            jj = j
 
             for n = 0:2
                 rhot1[ii,jj] += rhot[mod1(3*ii+n,N),mod1(3*jj+n,N)]
@@ -229,6 +511,76 @@ function map_G!(rhot,rhot1,L::Int64,N::Int64,ind::Int64)
             
         end
     end
+
+end
+
+function fidelity(rho,sigma)
+
+    return tr(sqrt(sqrt(rho)*sigma*sqrt(rho)))^2
+
+end
+
+function test_commute()
+
+    L = 3^3
+    N = 3*L
+    
+    psi0 = coherent_state(N,0.5,0.5)
+    # psi0 .= 0.0
+    # psi0[L] = 1
+    rho0 = psi0*psi0'
+
+    rhot = copy(rho0)
+    # rhot_p = copy(rho0)
+    rhot1 = copy(rhot)
+    # rhot1_p = copy(rhot)
+    
+    # define matrix to transform q basis to p basis (complex conjugate transposed matrix of this transforms p basis to q basis)
+    mat = transform_q2p(N)
+
+    # map_G!(rhot,rhot1,L,N,1) # position basis
+    # rhot .= rhot1
+    # rhot .= mat*rhot*mat'
+    # map_G!(rhot,rhot1,L,N,1) # momentum basis
+    # rhot .= rhot1
+    # rhot .= mat'*rhot*mat # position basis
+
+    rhot .= mat*rhot*mat'
+    map_G!(rhot,rhot1,L,N,1) # momentum basis
+    rhot .= rhot1
+    rhot .= mat'*rhot*mat
+    map_G!(rhot,rhot1,L,N,1) # position basis
+    rhot .= rhot1
+    
+    # rhot .= copy(rho0)
+    # map_G!(rhot,rhot1,L,N,1) # position basis
+    # rhot .= rhot1 
+    # rhot .= mat*rhot*mat'
+    # map_G!(rhot,rhot1,L,N,1) # momentum basis
+    # rhot .= rhot1 
+    # rho1 = mat'*rhot*mat
+
+    # return rhotA, rhotB, mat
+    # return fidelity(rhotA,rhotB)
+
+    # # plot husimi
+    overlap_qp_mat = load("overlap_qp_mat_L27.jld2", "overlap_qp_mat") # run save_overlap_qp_mat first
+    vec_q = [0:1/N:1;] # technically this does not have to be this (I think)
+    vec_p = copy(vec_q)
+    
+    f_husimi = husimi(N,rhot,overlap_qp_mat)
+    # f_husimiA = husimi(N,rhotA,overlap_qp_mat)
+    # f_husimiB = husimi(N,rhotB,overlap_qp_mat)
+    # f_husimi_1 = husimi(N,rho1,overlap_qp_mat)
+    
+    figure()
+    pcolor(vec_q, vec_p, abs.(f_husimi)')
+    # pcolor(vec_q, vec_p, abs.(f_husimiA)')
+    # pcolor(vec_q, vec_p, abs.(f_husimiB)')
+    # pcolor(vec_q, vec_p, abs.(f_husimi_1)')
+    colorbar()
+
+    # return sum(f_husimiA)/N
 
 end
 
@@ -263,41 +615,6 @@ function transform_q2p_1(N::Int64,rho::Matrix{ComplexF64})
     rho_p .= rho_p/N
 
     return rho_p
-
-end
-
-function transform_q2p(N::Int64)
-
-    mat = zeros(ComplexF64,N,N)
-
-    for k = 1:N
-        for n = 1:N 
-            mat[k,n] = exp(1im*2*pi*k*n/N)
-        end
-    end
-    mat .= mat/sqrt(N)
-
-    return mat
-
-end
-
-function husimi_overlap(N::Int64,q::Float64,p::Float64)
-
-    overlap_qp = zeros(ComplexF64,N)
-
-    for n = 1:N
-        
-        for k = 1:N
-            braket_kkappa = exp(-pi/N*(k-N/2)^2) * exp(-1im*k*pi)
-            for j = 1:N
-                overlap_qp[n] += braket_kkappa * exp(1im*2*pi*(-j*n + (j-N*p+N/2)*(k+N*q-N/2))/N)
-            end
-        end
-
-    end
-    overlap_qp .= overlap_qp/N/(N/2)^(1/4)
-
-    return overlap_qp
 
 end
 
