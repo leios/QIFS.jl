@@ -165,13 +165,25 @@ function baker_2(P; a = 0.5)
     return Point(0.5 * P.x + 0.5, a*P.y + 0.5)
 end
 
-function generate_square_baker()
+#=
+mkdir res/
+
+julia> for i = 1:100
+           arr = QIFS.generate_square_baker(i)
+           filename = "res/check"*lpad(i, 4, "0")*".png"
+           savefig(heatmap(arr), filename)
+       end
+
+ffmpeg -i res/check0%04d.png out.mp4
+=#
+
+function generate_square_baker(num_iterations)
 
     pt = Point(rand(), rand())
     pts = [Point(rand(), rand()) for i = 1:100]
     res = 10
     arr = zeros(res, res)
-    for i = 1:60
+    for i = 1:num_iterations
 #=
         if (pt.x < 0.5)
             fx = baker_1
