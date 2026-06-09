@@ -249,6 +249,58 @@ function example_14()
 end
 
 #=-----------------------------------------------------------------------------#
+CIRCLE
+#-----------------------------------------------------------------------------=#
+
+function map_circle()
+
+    
+
+end
+
+function example_circle()
+
+    N = 40 # system size
+    Nt = 1 # number of iteration
+
+    # define matrix to transform q basis to p basis (complex conjugate transposed matrix of this transforms p basis to q basis)
+    mat = transform_q2p(N)
+
+    # define initail state rho0
+    psi0 = coherent_state(N,0.2,0.2) # can be any state in principle but we choose a cherent state
+    rho0 = psi0*psi0'
+
+    # define density matrices
+    rhot = copy(rho0) # time-evolved state to track
+    rhot_p = copy(rhot)
+    rhot1 = copy(rhot)
+    rhot1_p = copy(rhot)
+    
+    # measure time
+    t0 = time()
+
+    # iteration
+    for t = 1:Nt
+        # channel
+        map_circle!(rhot,rhot_p,rhot1,rhot1_p,mat,M,L,N,t,Nt)
+        println(tr(rhot))
+    end
+    
+    # plot husimi
+
+    println("preparing for husimi")
+    overlap_qp_mat, vec_q, vec_p = husimi_format(N)
+    
+    figure()
+    f_husimi = husimi(N,rhot,overlap_qp_mat,vec_q,vec_p)
+    pcolor(vec_q, vec_p, abs.(f_husimi)')
+    colorbar()
+
+    println("total time:",round(time()-t0; digits = 3),"sec")
+
+end
+
+#=-----------------------------------------------------------------------------#
 SQUARE
 #-----------------------------------------------------------------------------=#
 
@@ -645,6 +697,56 @@ end
 #=-----------------------------------------------------------------------------#
 BAKER MAP
 #-----------------------------------------------------------------------------=#
+
+
+function example_shearing()
+
+    L = 30
+    N = 2*L # system size
+
+    Nt = 1 # number of iteration
+
+    # define matrix to transform q basis to p basis (complex conjugate transposed matrix of this transforms p basis to q basis)
+    matN = transform_q2p(N)
+
+    # define initail state rho0
+    psi0 = coherent_state(N,0.5,0.5) # can be any state in principle but we choose a cherent state
+    #psi0 .= 0.0
+    #psi0[L]=1
+    # psi0 .= matN'*psi0
+    rho0 = psi0*psi0'
+
+    # define density matrices
+    rhot = copy(rho0) # time-evolved state to track
+    
+    # measure time
+    t0 = time()
+
+    # iteration
+    map_shearing = zeros(ComplexF64,N,N)
+    for n = 1:N
+        map_shearing[n,n] = exp(1im*2*pi/N*n*n)
+    end
+    for t = 1:Nt
+        rhot .= map_shearing*rhot*map_shearing'
+    end
+    
+    # plot husimi
+
+    println("preparing for husimi")
+    overlap_qp_mat, vec_q, vec_p = husimi_format(N)
+    # overlap_qp_mat = load("overlap_qp_mat_N128.jld2", "overlap_qp_mat") # run save_overlap_qp_mat first
+    # vec_q = [0:1/N:1;] # technically this does not have to be this (I think)
+    # vec_p = copy(vec_q)
+    
+    figure()
+    f_husimi = husimi(N,rhot,overlap_qp_mat,vec_q,vec_p)
+    pcolor(vec_q, vec_p, abs.(f_husimi)')
+    colorbar()
+
+    println("total time:",round(time()-t0; digits = 3),"sec")
+
+end
 
 function example_baker_2()
 
