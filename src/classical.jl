@@ -267,6 +267,24 @@ function generate_square_circle()
     arr = zeros(res, res)
 
     for i = 1:100000
+        pt = Point(pi*((pt.y)^2 + round(rand())),
+                   sqrt(pt.x/(2*pi)))
+        bin_x = floor(Int, (pt.x/(2*pi))*res)+1
+        bin_y = floor(Int, (pt.y)*res)+1
+        arr[bin_x, bin_y] += 1
+
+    end
+
+    return arr
+end
+
+function generate_circle_polar()
+
+    pt = Point(rand(), rand())
+    res = 100
+    arr = zeros(res, res)
+
+    for i = 1:100000
         pt = Point(pi*(pt.y*pt.y + round(rand())),
                    sqrt(pt.x/(2*pi)))
         bin_x = floor(Int, (pt.x/(2*pi))*res)+1
