@@ -214,7 +214,7 @@ end
 function baker_1(P; a = 0.5)
     #return Point(2 * P.x, a*P.y)
     #return Point(0.5 * P.x, a*P.y)
-    return Point(0.4*(P.x + floor(2*P.y)), 2*P.y - floor(2*P.y))
+    return Point(0.5*(P.x + floor(2*P.y)), 2*P.y - floor(2*P.y))
 end
 
 function baker_2(P; a = 0.5)
@@ -237,7 +237,8 @@ ffmpeg -i res/check0%04d.png out.mp4
 function generate_square_baker(num_iterations)
 
     pt = Point(rand(), rand())
-    pts = [Point(rand(), rand()) for i = 1:100]
+    num_pts = 1000
+    pts = [Point(rand(), rand()) for i = 1:num_pts]
     res = 100
     arr = zeros(res, res)
     for i = 1:num_iterations
@@ -250,7 +251,7 @@ function generate_square_baker(num_iterations)
         fx = rand((baker_1, baker_2))
 =#
         pts = baker_1.(pts)
-        for i = 1:100
+        for i = 1:num_pts
             bin_x = floor(Int, (pts[i].x*0.5 + 0.25)*res)+1
             bin_y = floor(Int, (pts[i].y*0.5 + 0.25)*res)+1
             arr[bin_x, bin_y] += 1
@@ -295,3 +296,56 @@ function generate_circle_polar()
 
     return arr
 end
+
+function generate_uniform_square()
+
+    pt = Point(rand(), rand())
+    res = 100
+    arr = zeros(res, res)
+
+    for i = 1:100000
+        pt = Point(0.5*(pt.y*2 + round(rand())),
+                   0.5*pt.x)
+        bin_x = floor(Int, (pt.x*0.5)*res)+1
+        bin_y = floor(Int, (pt.y*0.5)*res)+1
+        arr[bin_x, bin_y] += 1
+    
+    end
+
+    return arr
+end
+
+#=-----------------------------------------------------------------------------#
+MISC
+#-----------------------------------------------------------------------------=#
+
+function rotate(P, theta)
+    return Point(P.x*cos(theta) - P.y*sin(theta), P.x*sin(theta) + P.y*cos(theta))
+end
+
+function shear(P, theta)
+    return Point(P.x - P.y*sin(theta), P.x*sin(theta) + P.y)
+end
+
+# plot with scatter(b[:,1], b[:,2])
+
+function create_plotting_array()
+    res = 15
+    a = [Point(1.0, 0.0) for i = 1:res]
+
+    for i = 2:res
+        theta = (2*pi)*(i/res)
+        a[i] = shear(a[i-1], theta)
+        #a[i] = rotate(a[i-1], -theta)
+    end
+
+    b = zeros(length(a), 2)
+
+    for i = 1:length(a)
+         b[i,1] = a[i].x
+         b[i,2] = a[i].y
+    end
+
+    return b
+end
+
