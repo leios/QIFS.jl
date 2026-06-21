@@ -29,3 +29,6 @@ JuliaLocalPreferences.toml
 
 # auxilliary
 notes/*
+*jld2
+*.png
+.DS_Store
