@@ -1,0 +1,1392 @@
+Quibble Program:
+Body
+#ifndef CHAOS_QBL
+#define CHAOS_QBL
+#ifndef QUIBBLE_POINTS_QBL
+#define QUIBBLE_POINTS_QBL
+
+typedef struct {
+    float x;
+} quibble_point_1D;
+
+typedef struct {
+    float x;
+    float y;
+} quibble_point_2D;
+
+typedef struct {
+    float x;
+    float y;
+    float z;
+} quibble_point_3D;
+
+quibble_point_1D qb_point_1D(float x){
+    quibble_point_1D pt;
+    pt.x = x;
+    return pt;
+}
+
+quibble_point_2D qb_point_2D(float x, float y){
+    quibble_point_2D pt;
+    pt.x = x;
+    pt.y = y;
+    return pt;
+}
+
+quibble_point_3D qb_point_3D(float x, float y, float z){
+    quibble_point_3D pt;
+    pt.x = x;
+    pt.y = y;
+    pt.z = z;
+    return pt;
+}
+
+#endif
+
+#ifndef QUIBBLE_COLORS_QBL
+#define QUIBBLE_COLORS_QBL
+
+typedef struct {
+    unsigned char red;
+    unsigned char green;
+    unsigned char blue;
+    unsigned char alpha;
+} quibble_color_rgba8888;
+
+typedef struct {
+    unsigned char red;
+    unsigned char green;
+    unsigned char blue;
+} quibble_color_rgb888;
+
+typedef struct {
+    unsigned char red;
+    unsigned char green;
+    unsigned char blue;
+    unsigned char priority;
+} quibble_pcolor_rgb888;
+
+typedef struct {
+    unsigned char red;
+    unsigned char green;
+    unsigned char blue;
+    unsigned char alpha;
+    unsigned char priority;
+} quibble_pcolor_rgba8888;
+
+float qb_as_float(unsigned char value){
+    return (float)value/255;
+}
+
+unsigned char qb_color_clamp(float value,
+                             float min_value,
+                             float max_value){
+    if (value < min_value){
+        return 0;
+    }
+    else if (value > max_value){
+        return 255;
+    }
+    else{
+        return floor(255*((value - min_value)/(max_value - min_value)));
+    }
+}
+
+quibble_color_rgba8888 qb_color_rgba8888(float red,
+                                         float green,
+                                         float blue,
+                                         float alpha){
+    quibble_color_rgba8888 qp;
+    qp.red = qb_color_clamp(red, 0, 1);
+    qp.green = qb_color_clamp(green, 0, 1);
+    qp.blue = qb_color_clamp(blue, 0, 1);
+    qp.alpha = qb_color_clamp(alpha, 0, 1);
+    return qp;
+}
+
+quibble_color_rgb888 qb_color_rgb888(float red, float green, float blue){
+    quibble_color_rgb888 qp;
+    qp.red = qb_color_clamp(red, 0, 1);
+    qp.green = qb_color_clamp(green, 0, 1);
+    qp.blue = qb_color_clamp(blue, 0, 1);
+    return qp;
+}
+
+quibble_pcolor_rgba8888 qb_pcolor_rgba8888(float red,
+                                           float green,
+                                           float blue,
+                                           float alpha,
+                                           float priority){
+    quibble_pcolor_rgba8888 qp;
+    qp.red = qb_color_clamp(red, 0, 1);
+    qp.green = qb_color_clamp(green, 0, 1);
+    qp.blue = qb_color_clamp(blue, 0, 1);
+    qp.alpha = qb_color_clamp(alpha, 0, 1);
+    qp.priority = qb_color_clamp(priority, 0, 1);
+    return qp;
+}
+
+quibble_pcolor_rgb888 qb_pcolor_rgb888(float red,
+                                       float green,
+                                       float blue,
+                                       float priority){
+    quibble_pcolor_rgb888 qp;
+    qp.red = qb_color_clamp(red, 0, 1);
+    qp.green = qb_color_clamp(green, 0, 1);
+    qp.blue = qb_color_clamp(blue, 0, 1);
+    qp.priority = qb_color_clamp(priority, 0, 1);
+    return qp;
+}
+
+#endif
+
+
+// Original: https://www.pcg-random.org/download.html#minimal-c-implementation
+// *Really* minimal PCG32 code / (c) 2014 M.E. O'Neill / pcg-random.org
+// Licensed under Apache License 2.0 (NO WARRANTY, etc. see website)
+
+typedef struct{
+    unsigned long state;
+    unsigned long multiplier;
+    unsigned long increment;
+} quibble_pcg_state;
+
+unsigned int pcg32(quibble_pcg_state *qstate){
+    unsigned long oldstate = qstate->state;
+
+    // Advance internal state
+    qstate->state = oldstate * 6364136223846793005ULL + (qstate->increment|1);
+
+    // Calculate output function (XSH RR), uses old state for max ILP
+    unsigned int xorshifted = ((oldstate >> 18u) ^ oldstate) >> 27u;
+    unsigned int rot = oldstate >> 59u;
+    return (xorshifted >> rot) | (xorshifted << ((-rot) & 31));
+}
+
+quibble_pcg_state pcg32_init(unsigned long initstate){
+    quibble_pcg_state qstate;
+
+    qstate.multiplier = 6364136223846793005u;
+    qstate.increment  = 1442695040888963407u;
+    qstate.state = 0U;
+    pcg32(&qstate);
+    qstate.state += initstate;
+    pcg32(&qstate);
+
+    return qstate;
+}
+
+float fpcg32(quibble_pcg_state *qstate){
+    return (float)(pcg32(qstate)%1000000)/1000000;
+}
+
+quibble_point_2D halfway(quibble_point_2D pt_1, quibble_point_2D pt_2){
+    quibble_point_2D pt;
+    pt.x = 0.5*(pt_1.x + pt_2.x);
+    pt.y = 0.5*(pt_1.y + pt_2.y);
+    return pt;
+}
+
+
+
+
+
+quibble_point_2D constant_disk_fx(quibble_point_2D pt,
+                                  float radius,
+                                  quibble_point_2D location,
+                                  bool function_index){
+
+    pt.x = (pt.x-location.x)/radius;
+    pt.y = (pt.y-location.y)/radius;
+
+    float r2 = pt.x*pt.x + pt.y*pt.y;
+
+    float theta = M_PI;
+    if (r2 > FLT_EPSILON){
+        theta = atan2(pt.y,pt.x);
+        if (pt.y < 0){
+            theta += 2*M_PI;
+        }
+
+        float new_theta = (r2+function_index)*M_PI;
+
+        float new_r2 = sqrt(theta/(2*M_PI));
+
+        pt.x = radius*new_r2*cos(new_theta)+location.x;
+        pt.y = radius*new_r2*sin(new_theta)+location.y;
+    }
+
+    return pt;
+}
+
+quibble_point_2D naive_disk_fx(quibble_point_2D pt,
+                               float radius,
+                               quibble_point_2D location, 
+                               bool function_index){
+
+    pt.x = (pt.x-location.x)/radius;
+    pt.y = (pt.y-location.y)/radius;
+
+    float r2 = sqrt(pt.x*pt.x + pt.y*pt.y);
+
+    float theta = M_PI;
+    if (r2 > FLT_EPSILON){
+        theta = atan2(pt.y,pt.x);
+        if (pt.y < 0){
+            theta += 2*M_PI;
+        }
+
+        float new_theta = (r2+function_index)*M_PI;
+
+        float new_r2 = theta/(2*M_PI);
+
+        pt.x = radius*new_r2*cos(new_theta)+location.x;
+        pt.y = radius*new_r2*sin(new_theta)+location.y;
+    }
+
+    return pt;
+}
+
+
+
+
+
+#endif
+#ifndef QUIBBLE_OUTPUT_QBL
+#define QUIBBLE_OUTPUT_QBL
+
+#ifndef QUIBBLE_COLORS_QBL
+#define QUIBBLE_COLORS_QBL
+
+typedef struct {
+    unsigned char red;
+    unsigned char green;
+    unsigned char blue;
+    unsigned char alpha;
+} quibble_color_rgba8888;
+
+typedef struct {
+    unsigned char red;
+    unsigned char green;
+    unsigned char blue;
+} quibble_color_rgb888;
+
+typedef struct {
+    unsigned char red;
+    unsigned char green;
+    unsigned char blue;
+    unsigned char priority;
+} quibble_pcolor_rgb888;
+
+typedef struct {
+    unsigned char red;
+    unsigned char green;
+    unsigned char blue;
+    unsigned char alpha;
+    unsigned char priority;
+} quibble_pcolor_rgba8888;
+
+float qb_as_float(unsigned char value){
+    return (float)value/255;
+}
+
+unsigned char qb_color_clamp(float value,
+                             float min_value,
+                             float max_value){
+    if (value < min_value){
+        return 0;
+    }
+    else if (value > max_value){
+        return 255;
+    }
+    else{
+        return floor(255*((value - min_value)/(max_value - min_value)));
+    }
+}
+
+quibble_color_rgba8888 qb_color_rgba8888(float red,
+                                         float green,
+                                         float blue,
+                                         float alpha){
+    quibble_color_rgba8888 qp;
+    qp.red = qb_color_clamp(red, 0, 1);
+    qp.green = qb_color_clamp(green, 0, 1);
+    qp.blue = qb_color_clamp(blue, 0, 1);
+    qp.alpha = qb_color_clamp(alpha, 0, 1);
+    return qp;
+}
+
+quibble_color_rgb888 qb_color_rgb888(float red, float green, float blue){
+    quibble_color_rgb888 qp;
+    qp.red = qb_color_clamp(red, 0, 1);
+    qp.green = qb_color_clamp(green, 0, 1);
+    qp.blue = qb_color_clamp(blue, 0, 1);
+    return qp;
+}
+
+quibble_pcolor_rgba8888 qb_pcolor_rgba8888(float red,
+                                           float green,
+                                           float blue,
+                                           float alpha,
+                                           float priority){
+    quibble_pcolor_rgba8888 qp;
+    qp.red = qb_color_clamp(red, 0, 1);
+    qp.green = qb_color_clamp(green, 0, 1);
+    qp.blue = qb_color_clamp(blue, 0, 1);
+    qp.alpha = qb_color_clamp(alpha, 0, 1);
+    qp.priority = qb_color_clamp(priority, 0, 1);
+    return qp;
+}
+
+quibble_pcolor_rgb888 qb_pcolor_rgb888(float red,
+                                       float green,
+                                       float blue,
+                                       float priority){
+    quibble_pcolor_rgb888 qp;
+    qp.red = qb_color_clamp(red, 0, 1);
+    qp.green = qb_color_clamp(green, 0, 1);
+    qp.blue = qb_color_clamp(blue, 0, 1);
+    qp.priority = qb_color_clamp(priority, 0, 1);
+    return qp;
+}
+
+#endif
+
+#ifndef QUIBBLE_POINTS_QBL
+#define QUIBBLE_POINTS_QBL
+
+typedef struct {
+    float x;
+} quibble_point_1D;
+
+typedef struct {
+    float x;
+    float y;
+} quibble_point_2D;
+
+typedef struct {
+    float x;
+    float y;
+    float z;
+} quibble_point_3D;
+
+quibble_point_1D qb_point_1D(float x){
+    quibble_point_1D pt;
+    pt.x = x;
+    return pt;
+}
+
+quibble_point_2D qb_point_2D(float x, float y){
+    quibble_point_2D pt;
+    pt.x = x;
+    pt.y = y;
+    return pt;
+}
+
+quibble_point_3D qb_point_3D(float x, float y, float z){
+    quibble_point_3D pt;
+    pt.x = x;
+    pt.y = y;
+    pt.z = z;
+    return pt;
+}
+
+#endif
+
+#ifndef SIMPLE_CAMERA_QBL
+#define SIMPLE_CAMERA_QBL
+
+typedef struct {
+    float ppu;
+    float world_size_x;
+    float world_size_y;
+    float world_position_x;
+    float world_position_y;
+} quibble_simple_camera;
+
+int qb_find_camera_width(quibble_simple_camera qcam){
+    if (qcam.world_size_x == 0){
+        return 1;
+    }
+    return ceil(qcam.world_size_x * qcam.ppu);
+}
+
+int qb_find_camera_height(quibble_simple_camera qcam){
+    if (qcam.world_size_y == 0){
+        return 1;
+    }
+    return ceil(qcam.world_size_y * qcam.ppu);
+}
+
+int qb_find_bin(float x, float y, quibble_simple_camera qcam){
+    int width = qb_find_camera_width(qcam);
+    int height = qb_find_camera_height(qcam);
+
+    int x_bin = 0;
+    if (qcam.world_size_x > 0){
+        x_bin = floor(width * ((x - qcam.world_position_x)/qcam.world_size_x));
+    }
+
+    if (x_bin < 0 || x_bin >= width){
+        return -1;
+    }
+
+    int y_bin = 0;
+    if (qcam.world_size_y > 0){
+        y_bin = floor(height * ((y - qcam.world_position_y)/qcam.world_size_y));
+    }
+
+    if (y_bin < 0 || y_bin >= height){
+        return -1;
+    }
+
+    return x_bin + y_bin * width;
+}
+
+#endif
+
+
+void histogram_output_rgba8888(quibble_point_2D pt,
+                               quibble_color_rgba8888 color,
+                               quibble_simple_camera qcam,
+                               __global quibble_color_rgba8888 *_qpix_output){
+    int bin = qb_find_bin(pt.x, pt.y, qcam);
+    if (bin > 0){
+        _qpix_output[bin].red = color.red;
+        _qpix_output[bin].green = color.green;
+        _qpix_output[bin].blue = color.blue;
+        _qpix_output[bin].alpha = color.alpha;
+    }
+}
+
+void histogram_output_rgb888(quibble_point_2D pt,
+                             quibble_color_rgb888 color,
+                             quibble_simple_camera qcam,
+                             __global quibble_color_rgb888 *_qpix_output){
+    int bin = qb_find_bin(pt.x, pt.y, qcam);
+    if (bin > 0){
+        _qpix_output[bin].red = color.red;
+        _qpix_output[bin].green = color.green;
+        _qpix_output[bin].blue = color.blue;
+    }
+}
+
+void histogram_output_prgba8888(quibble_point_2D pt,
+                                quibble_pcolor_rgba8888 color,
+                                quibble_simple_camera qcam,
+                               __global quibble_pcolor_rgba8888 *_qpix_output){
+    int bin = qb_find_bin(pt.x, pt.y, qcam);
+    if (bin > 0){
+        if (color.priority > _qpix_output[bin].priority && color.alpha == 255
+            || _qpix_output[bin].alpha == 0){
+            _qpix_output[bin].red = color.red;
+            _qpix_output[bin].green = color.green;
+            _qpix_output[bin].blue = color.blue;
+            _qpix_output[bin].alpha = color.alpha;
+            _qpix_output[bin].priority = color.priority;
+        }
+        else if (color.priority > _qpix_output[bin].priority &&
+                 color.alpha < 255 && color.alpha > 0){
+
+            float bg_red = qb_as_float(_qpix_output[bin].red);
+            float bg_green = qb_as_float(_qpix_output[bin].green);
+            float bg_blue = qb_as_float(_qpix_output[bin].blue);
+            float bg_alpha = qb_as_float(_qpix_output[bin].alpha);
+
+            float fg_red = qb_as_float(color.red);
+            float fg_green = qb_as_float(color.green);
+            float fg_blue = qb_as_float(color.blue);
+            float fg_alpha = qb_as_float(color.alpha);
+
+            float new_alpha =
+                fg_alpha + bg_alpha * (1-fg_alpha);
+
+            _qpix_output[bin].red = qb_color_clamp(
+                (fg_red * fg_alpha + bg_red * bg_alpha * (1 - fg_alpha)) /
+                new_alpha,
+                0, 1
+            );
+
+            _qpix_output[bin].green = qb_color_clamp(
+                (fg_green * fg_alpha + bg_green * bg_alpha * (1 - fg_alpha)) /
+                new_alpha,
+                0, 1
+            );
+
+            _qpix_output[bin].blue = qb_color_clamp(
+                (fg_blue * fg_alpha + bg_blue * bg_alpha * (1 - fg_alpha)) /
+                new_alpha,
+                0, 1
+            );
+
+            _qpix_output[bin].alpha = qb_color_clamp(new_alpha, 0, 1);
+            _qpix_output[bin].priority = color.priority;
+        }
+        else if (color.priority < _qpix_output[bin].priority &&
+                 _qpix_output[bin].alpha < 255 && _qpix_output[bin].alpha > 0){
+
+            float fg_red = qb_as_float(_qpix_output[bin].red);
+            float fg_green = qb_as_float(_qpix_output[bin].green);
+            float fg_blue = qb_as_float(_qpix_output[bin].blue);
+            float fg_alpha = qb_as_float(_qpix_output[bin].alpha);
+
+            float bg_red = qb_as_float(color.red);
+            float bg_green = qb_as_float(color.green);
+            float bg_blue = qb_as_float(color.blue);
+            float bg_alpha = qb_as_float(color.alpha);
+
+            float new_alpha =
+                fg_alpha + bg_alpha * (1-fg_alpha);
+
+            _qpix_output[bin].red = qb_color_clamp(
+                (fg_red * fg_alpha + bg_red * bg_alpha * (1 - fg_alpha)) /
+                new_alpha,
+                0, 1
+            );
+
+            _qpix_output[bin].green = qb_color_clamp(
+                (fg_green * fg_alpha + bg_green * bg_alpha * (1 - fg_alpha)) /
+                new_alpha,
+                0, 1
+            );
+
+            _qpix_output[bin].blue = qb_color_clamp(
+                (fg_blue * fg_alpha + bg_blue * bg_alpha * (1 - fg_alpha)) /
+                new_alpha,
+                0, 1
+            );
+
+            _qpix_output[bin].alpha = qb_color_clamp(new_alpha, 0, 1);
+
+        }
+    }
+
+}
+
+void histogram_output_prgb888(quibble_point_2D pt,
+                              quibble_pcolor_rgb888 color,
+                              quibble_simple_camera qcam,
+                             __global quibble_pcolor_rgb888 *_qpix_output){
+    int bin = qb_find_bin(pt.x, pt.y, qcam);
+    if (bin > 0 && color.priority > _qpix_output[bin].priority){
+        _qpix_output[bin].red = color.red;
+        _qpix_output[bin].green = color.green;
+        _qpix_output[bin].blue = color.blue;
+        _qpix_output[bin].priority = color.priority;
+    }
+}
+
+void histogram_overwrite_prgba8888(quibble_point_2D pt,
+                                   quibble_pcolor_rgba8888 color,
+                                   quibble_simple_camera qcam,
+                                  __global quibble_pcolor_rgba8888 *_qpix_output){
+    int bin = qb_find_bin(pt.x, pt.y, qcam);
+    if (bin > 0){
+        _qpix_output[bin].red = color.red;
+        _qpix_output[bin].green = color.green;
+        _qpix_output[bin].blue = color.blue;
+        _qpix_output[bin].alpha = color.alpha;
+        _qpix_output[bin].priority = color.priority;
+    }
+}
+
+void histogram_overwrite_prgb888(quibble_point_2D pt,
+                                 quibble_pcolor_rgb888 color,
+                                 quibble_simple_camera qcam,
+                                __global quibble_pcolor_rgb888 *_qpix_output){
+    int bin = qb_find_bin(pt.x, pt.y, qcam);
+    if (bin > 0){
+        _qpix_output[bin].red = color.red;
+        _qpix_output[bin].green = color.green;
+        _qpix_output[bin].blue = color.blue;
+        _qpix_output[bin].priority = color.priority;
+    }
+}
+
+quibble_point_2D qb_find_point_location(int idx, quibble_simple_camera qcam){
+    int width = qb_find_camera_width(qcam);
+    int height = qb_find_camera_height(qcam);
+
+    quibble_point_2D pt;
+    pt.y = ((floor((float)(idx / width))+0.5)/height)*qcam.world_size_y + qcam.world_position_y;
+    pt.x = (((float)(idx % width) + 0.5)/width)*qcam.world_size_x + qcam.world_position_x;
+
+    return pt;
+}
+
+
+
+#endif
+
+quibble_point_2D rotate(quibble_point_2D pt, float theta){
+    return qb_point_2D((pt.x*cos(theta) - pt.y*sin(theta)),
+                       (pt.x*sin(theta) + pt.y*cos(theta)));
+}
+
+quibble_point_2D stretch(quibble_point_2D pt, float stretch_factor){
+    return qb_point_2D(pt.x/stretch_factor, pt.y*stretch_factor);
+}
+
+__kernel void clear_bg(__global quibble_pcolor_rgba8888 * qps, int qps_color_type, int qps_width, int qps_height, quibble_simple_camera qcam){
+    int _idx = get_global_id(0);
+
+    quibble_point_2D pt = qb_find_point_location(_idx, qcam);
+    quibble_pcolor_rgba8888 qcolor = qb_pcolor_rgba8888(0,0,0,1,0);
+    histogram_overwrite_prgba8888(pt, qcolor, qcam, qps);
+
+}
+
+__kernel void atom_shader(__global quibble_pcolor_rgba8888 * qps, int qps_color_type, int qps_width, int qps_height, quibble_simple_camera qcam, float time){
+    int _idx = get_global_id(0);
+
+
+    quibble_pcolor_rgba8888 qcolor = qb_pcolor_rgba8888(1,1,1,1,1);
+
+    {
+int num_iterations = 50;
+quibble_simple_camera cam = qcam;
+quibble_pcolor_rgba8888 clr = qcolor;
+quibble_point_2D location = qb_point_2D(0,0);
+float radius = 0.5;
+bool naive_disk = false;
+
+
+    quibble_pcg_state qstate = pcg32_init(_idx);
+
+    float y = fpcg32(&qstate)*cam.world_size_y+cam.world_position_y;
+
+    float x = fpcg32(&qstate)*cam.world_size_x+cam.world_position_x;
+
+    quibble_point_2D _pt = qb_point_2D(x, y);
+    quibble_pcolor_rgba8888 _clr = qb_pcolor_rgba8888(0,0,0,0,0);
+
+    unsigned short chosen_fx;
+   
+    for (int _i = 0; _i < num_iterations; ++_i){
+        chosen_fx = pcg32(&qstate)%2;
+
+        switch (chosen_fx){
+            case 0:
+                if (naive_disk) {
+                    _pt = naive_disk_fx(_pt, radius, location, 0);
+                }
+                else {
+                    _pt = constant_disk_fx(_pt, radius, location, 0);
+                }
+                break;
+            case 1:
+                if (naive_disk) {
+                    _pt = naive_disk_fx(_pt, radius, location, 1);
+                }
+                else {
+                    _pt = constant_disk_fx(_pt, radius, location, 1);
+                }
+                break;
+            default:
+                break;
+        }
+        _clr = clr;
+        
+        {
+quibble_point_2D pt = _pt;
+float beta = 10;
+int num_ignore = 20;
+float circle_radius = 0.75;
+
+    pt.x *= circle_radius;
+    pt.y *= circle_radius;
+
+    pt.y += (beta)*pt.x*pt.x*0.33333;
+
+    pt.y -= circle_radius*2;
+
+    quibble_point_2D ref_pt = pt;
+    quibble_point_2D out_pt = pt;
+
+    float stretch_factor = 1.5;
+
+    if (_i > num_ignore){
+
+        pt = rotate(pt, M_PI*time);
+        out_pt = stretch(pt, stretch_factor);
+        histogram_output_prgba8888(out_pt, qcolor, cam, qps);
+
+        pt = rotate(pt, M_PI/3);
+        out_pt = stretch(pt, stretch_factor);
+        out_pt = rotate(out_pt, M_PI/3);
+        histogram_output_prgba8888(out_pt, qcolor, cam, qps);
+
+        pt = rotate(pt, M_PI/3);
+        out_pt = stretch(pt, stretch_factor);
+        out_pt = rotate(out_pt, 2*M_PI/3);
+        histogram_output_prgba8888(out_pt, qcolor, cam, qps);
+
+        pt = rotate(pt, M_PI/3);
+        out_pt = stretch(pt, stretch_factor);
+        histogram_output_prgba8888(out_pt, qcolor, cam, qps);
+
+        pt = rotate(pt, M_PI/3);
+        out_pt = stretch(pt, stretch_factor);
+        out_pt = rotate(out_pt, M_PI/3);
+        histogram_output_prgba8888(out_pt, qcolor, cam, qps);
+
+        pt = rotate(pt, M_PI/3);
+        out_pt = stretch(pt, stretch_factor);
+        out_pt = rotate(out_pt, 2*M_PI/3);
+        histogram_output_prgba8888(out_pt, qcolor, cam, qps);
+    }
+}
+
+        {
+quibble_point_2D pt = _pt;
+int num_ignore = 20;
+float circle_radius = 0.75;
+
+
+    pt.x *= circle_radius*1.5;
+    pt.y *= circle_radius*1.5;
+
+    quibble_point_2D out_pt = pt;
+
+    // now find all locations of other circles
+    if (_i > num_ignore){
+        histogram_output_prgba8888(out_pt, qcolor, cam, qps);
+   }
+}
+
+        }
+
+}
+
+
+}
+
+
+Everything Else:
+#ifndef CHAOS_QBL
+#define CHAOS_QBL
+#ifndef QUIBBLE_POINTS_QBL
+#define QUIBBLE_POINTS_QBL
+
+typedef struct {
+    float x;
+} quibble_point_1D;
+
+typedef struct {
+    float x;
+    float y;
+} quibble_point_2D;
+
+typedef struct {
+    float x;
+    float y;
+    float z;
+} quibble_point_3D;
+
+quibble_point_1D qb_point_1D(float x){
+    quibble_point_1D pt;
+    pt.x = x;
+    return pt;
+}
+
+quibble_point_2D qb_point_2D(float x, float y){
+    quibble_point_2D pt;
+    pt.x = x;
+    pt.y = y;
+    return pt;
+}
+
+quibble_point_3D qb_point_3D(float x, float y, float z){
+    quibble_point_3D pt;
+    pt.x = x;
+    pt.y = y;
+    pt.z = z;
+    return pt;
+}
+
+#endif
+
+#ifndef QUIBBLE_COLORS_QBL
+#define QUIBBLE_COLORS_QBL
+
+typedef struct {
+    unsigned char red;
+    unsigned char green;
+    unsigned char blue;
+    unsigned char alpha;
+} quibble_color_rgba8888;
+
+typedef struct {
+    unsigned char red;
+    unsigned char green;
+    unsigned char blue;
+} quibble_color_rgb888;
+
+typedef struct {
+    unsigned char red;
+    unsigned char green;
+    unsigned char blue;
+    unsigned char priority;
+} quibble_pcolor_rgb888;
+
+typedef struct {
+    unsigned char red;
+    unsigned char green;
+    unsigned char blue;
+    unsigned char alpha;
+    unsigned char priority;
+} quibble_pcolor_rgba8888;
+
+float qb_as_float(unsigned char value){
+    return (float)value/255;
+}
+
+unsigned char qb_color_clamp(float value,
+                             float min_value,
+                             float max_value){
+    if (value < min_value){
+        return 0;
+    }
+    else if (value > max_value){
+        return 255;
+    }
+    else{
+        return floor(255*((value - min_value)/(max_value - min_value)));
+    }
+}
+
+quibble_color_rgba8888 qb_color_rgba8888(float red,
+                                         float green,
+                                         float blue,
+                                         float alpha){
+    quibble_color_rgba8888 qp;
+    qp.red = qb_color_clamp(red, 0, 1);
+    qp.green = qb_color_clamp(green, 0, 1);
+    qp.blue = qb_color_clamp(blue, 0, 1);
+    qp.alpha = qb_color_clamp(alpha, 0, 1);
+    return qp;
+}
+
+quibble_color_rgb888 qb_color_rgb888(float red, float green, float blue){
+    quibble_color_rgb888 qp;
+    qp.red = qb_color_clamp(red, 0, 1);
+    qp.green = qb_color_clamp(green, 0, 1);
+    qp.blue = qb_color_clamp(blue, 0, 1);
+    return qp;
+}
+
+quibble_pcolor_rgba8888 qb_pcolor_rgba8888(float red,
+                                           float green,
+                                           float blue,
+                                           float alpha,
+                                           float priority){
+    quibble_pcolor_rgba8888 qp;
+    qp.red = qb_color_clamp(red, 0, 1);
+    qp.green = qb_color_clamp(green, 0, 1);
+    qp.blue = qb_color_clamp(blue, 0, 1);
+    qp.alpha = qb_color_clamp(alpha, 0, 1);
+    qp.priority = qb_color_clamp(priority, 0, 1);
+    return qp;
+}
+
+quibble_pcolor_rgb888 qb_pcolor_rgb888(float red,
+                                       float green,
+                                       float blue,
+                                       float priority){
+    quibble_pcolor_rgb888 qp;
+    qp.red = qb_color_clamp(red, 0, 1);
+    qp.green = qb_color_clamp(green, 0, 1);
+    qp.blue = qb_color_clamp(blue, 0, 1);
+    qp.priority = qb_color_clamp(priority, 0, 1);
+    return qp;
+}
+
+#endif
+
+
+// Original: https://www.pcg-random.org/download.html#minimal-c-implementation
+// *Really* minimal PCG32 code / (c) 2014 M.E. O'Neill / pcg-random.org
+// Licensed under Apache License 2.0 (NO WARRANTY, etc. see website)
+
+typedef struct{
+    unsigned long state;
+    unsigned long multiplier;
+    unsigned long increment;
+} quibble_pcg_state;
+
+unsigned int pcg32(quibble_pcg_state *qstate){
+    unsigned long oldstate = qstate->state;
+
+    // Advance internal state
+    qstate->state = oldstate * 6364136223846793005ULL + (qstate->increment|1);
+
+    // Calculate output function (XSH RR), uses old state for max ILP
+    unsigned int xorshifted = ((oldstate >> 18u) ^ oldstate) >> 27u;
+    unsigned int rot = oldstate >> 59u;
+    return (xorshifted >> rot) | (xorshifted << ((-rot) & 31));
+}
+
+quibble_pcg_state pcg32_init(unsigned long initstate){
+    quibble_pcg_state qstate;
+
+    qstate.multiplier = 6364136223846793005u;
+    qstate.increment  = 1442695040888963407u;
+    qstate.state = 0U;
+    pcg32(&qstate);
+    qstate.state += initstate;
+    pcg32(&qstate);
+
+    return qstate;
+}
+
+float fpcg32(quibble_pcg_state *qstate){
+    return (float)(pcg32(qstate)%1000000)/1000000;
+}
+
+quibble_point_2D halfway(quibble_point_2D pt_1, quibble_point_2D pt_2){
+    quibble_point_2D pt;
+    pt.x = 0.5*(pt_1.x + pt_2.x);
+    pt.y = 0.5*(pt_1.y + pt_2.y);
+    return pt;
+}
+
+
+
+
+
+quibble_point_2D constant_disk_fx(quibble_point_2D pt,
+                                  float radius,
+                                  quibble_point_2D location,
+                                  bool function_index){
+
+    pt.x = (pt.x-location.x)/radius;
+    pt.y = (pt.y-location.y)/radius;
+
+    float r2 = pt.x*pt.x + pt.y*pt.y;
+
+    float theta = M_PI;
+    if (r2 > FLT_EPSILON){
+        theta = atan2(pt.y,pt.x);
+        if (pt.y < 0){
+            theta += 2*M_PI;
+        }
+
+        float new_theta = (r2+function_index)*M_PI;
+
+        float new_r2 = sqrt(theta/(2*M_PI));
+
+        pt.x = radius*new_r2*cos(new_theta)+location.x;
+        pt.y = radius*new_r2*sin(new_theta)+location.y;
+    }
+
+    return pt;
+}
+
+quibble_point_2D naive_disk_fx(quibble_point_2D pt,
+                               float radius,
+                               quibble_point_2D location, 
+                               bool function_index){
+
+    pt.x = (pt.x-location.x)/radius;
+    pt.y = (pt.y-location.y)/radius;
+
+    float r2 = sqrt(pt.x*pt.x + pt.y*pt.y);
+
+    float theta = M_PI;
+    if (r2 > FLT_EPSILON){
+        theta = atan2(pt.y,pt.x);
+        if (pt.y < 0){
+            theta += 2*M_PI;
+        }
+
+        float new_theta = (r2+function_index)*M_PI;
+
+        float new_r2 = theta/(2*M_PI);
+
+        pt.x = radius*new_r2*cos(new_theta)+location.x;
+        pt.y = radius*new_r2*sin(new_theta)+location.y;
+    }
+
+    return pt;
+}
+
+
+
+
+
+#endif
+#ifndef QUIBBLE_OUTPUT_QBL
+#define QUIBBLE_OUTPUT_QBL
+
+#ifndef QUIBBLE_COLORS_QBL
+#define QUIBBLE_COLORS_QBL
+
+typedef struct {
+    unsigned char red;
+    unsigned char green;
+    unsigned char blue;
+    unsigned char alpha;
+} quibble_color_rgba8888;
+
+typedef struct {
+    unsigned char red;
+    unsigned char green;
+    unsigned char blue;
+} quibble_color_rgb888;
+
+typedef struct {
+    unsigned char red;
+    unsigned char green;
+    unsigned char blue;
+    unsigned char priority;
+} quibble_pcolor_rgb888;
+
+typedef struct {
+    unsigned char red;
+    unsigned char green;
+    unsigned char blue;
+    unsigned char alpha;
+    unsigned char priority;
+} quibble_pcolor_rgba8888;
+
+float qb_as_float(unsigned char value){
+    return (float)value/255;
+}
+
+unsigned char qb_color_clamp(float value,
+                             float min_value,
+                             float max_value){
+    if (value < min_value){
+        return 0;
+    }
+    else if (value > max_value){
+        return 255;
+    }
+    else{
+        return floor(255*((value - min_value)/(max_value - min_value)));
+    }
+}
+
+quibble_color_rgba8888 qb_color_rgba8888(float red,
+                                         float green,
+                                         float blue,
+                                         float alpha){
+    quibble_color_rgba8888 qp;
+    qp.red = qb_color_clamp(red, 0, 1);
+    qp.green = qb_color_clamp(green, 0, 1);
+    qp.blue = qb_color_clamp(blue, 0, 1);
+    qp.alpha = qb_color_clamp(alpha, 0, 1);
+    return qp;
+}
+
+quibble_color_rgb888 qb_color_rgb888(float red, float green, float blue){
+    quibble_color_rgb888 qp;
+    qp.red = qb_color_clamp(red, 0, 1);
+    qp.green = qb_color_clamp(green, 0, 1);
+    qp.blue = qb_color_clamp(blue, 0, 1);
+    return qp;
+}
+
+quibble_pcolor_rgba8888 qb_pcolor_rgba8888(float red,
+                                           float green,
+                                           float blue,
+                                           float alpha,
+                                           float priority){
+    quibble_pcolor_rgba8888 qp;
+    qp.red = qb_color_clamp(red, 0, 1);
+    qp.green = qb_color_clamp(green, 0, 1);
+    qp.blue = qb_color_clamp(blue, 0, 1);
+    qp.alpha = qb_color_clamp(alpha, 0, 1);
+    qp.priority = qb_color_clamp(priority, 0, 1);
+    return qp;
+}
+
+quibble_pcolor_rgb888 qb_pcolor_rgb888(float red,
+                                       float green,
+                                       float blue,
+                                       float priority){
+    quibble_pcolor_rgb888 qp;
+    qp.red = qb_color_clamp(red, 0, 1);
+    qp.green = qb_color_clamp(green, 0, 1);
+    qp.blue = qb_color_clamp(blue, 0, 1);
+    qp.priority = qb_color_clamp(priority, 0, 1);
+    return qp;
+}
+
+#endif
+
+#ifndef QUIBBLE_POINTS_QBL
+#define QUIBBLE_POINTS_QBL
+
+typedef struct {
+    float x;
+} quibble_point_1D;
+
+typedef struct {
+    float x;
+    float y;
+} quibble_point_2D;
+
+typedef struct {
+    float x;
+    float y;
+    float z;
+} quibble_point_3D;
+
+quibble_point_1D qb_point_1D(float x){
+    quibble_point_1D pt;
+    pt.x = x;
+    return pt;
+}
+
+quibble_point_2D qb_point_2D(float x, float y){
+    quibble_point_2D pt;
+    pt.x = x;
+    pt.y = y;
+    return pt;
+}
+
+quibble_point_3D qb_point_3D(float x, float y, float z){
+    quibble_point_3D pt;
+    pt.x = x;
+    pt.y = y;
+    pt.z = z;
+    return pt;
+}
+
+#endif
+
+#ifndef SIMPLE_CAMERA_QBL
+#define SIMPLE_CAMERA_QBL
+
+typedef struct {
+    float ppu;
+    float world_size_x;
+    float world_size_y;
+    float world_position_x;
+    float world_position_y;
+} quibble_simple_camera;
+
+int qb_find_camera_width(quibble_simple_camera qcam){
+    if (qcam.world_size_x == 0){
+        return 1;
+    }
+    return ceil(qcam.world_size_x * qcam.ppu);
+}
+
+int qb_find_camera_height(quibble_simple_camera qcam){
+    if (qcam.world_size_y == 0){
+        return 1;
+    }
+    return ceil(qcam.world_size_y * qcam.ppu);
+}
+
+int qb_find_bin(float x, float y, quibble_simple_camera qcam){
+    int width = qb_find_camera_width(qcam);
+    int height = qb_find_camera_height(qcam);
+
+    int x_bin = 0;
+    if (qcam.world_size_x > 0){
+        x_bin = floor(width * ((x - qcam.world_position_x)/qcam.world_size_x));
+    }
+
+    if (x_bin < 0 || x_bin >= width){
+        return -1;
+    }
+
+    int y_bin = 0;
+    if (qcam.world_size_y > 0){
+        y_bin = floor(height * ((y - qcam.world_position_y)/qcam.world_size_y));
+    }
+
+    if (y_bin < 0 || y_bin >= height){
+        return -1;
+    }
+
+    return x_bin + y_bin * width;
+}
+
+#endif
+
+
+void histogram_output_rgba8888(quibble_point_2D pt,
+                               quibble_color_rgba8888 color,
+                               quibble_simple_camera qcam,
+                               __global quibble_color_rgba8888 *_qpix_output){
+    int bin = qb_find_bin(pt.x, pt.y, qcam);
+    if (bin > 0){
+        _qpix_output[bin].red = color.red;
+        _qpix_output[bin].green = color.green;
+        _qpix_output[bin].blue = color.blue;
+        _qpix_output[bin].alpha = color.alpha;
+    }
+}
+
+void histogram_output_rgb888(quibble_point_2D pt,
+                             quibble_color_rgb888 color,
+                             quibble_simple_camera qcam,
+                             __global quibble_color_rgb888 *_qpix_output){
+    int bin = qb_find_bin(pt.x, pt.y, qcam);
+    if (bin > 0){
+        _qpix_output[bin].red = color.red;
+        _qpix_output[bin].green = color.green;
+        _qpix_output[bin].blue = color.blue;
+    }
+}
+
+void histogram_output_prgba8888(quibble_point_2D pt,
+                                quibble_pcolor_rgba8888 color,
+                                quibble_simple_camera qcam,
+                               __global quibble_pcolor_rgba8888 *_qpix_output){
+    int bin = qb_find_bin(pt.x, pt.y, qcam);
+    if (bin > 0){
+        if (color.priority > _qpix_output[bin].priority && color.alpha == 255
+            || _qpix_output[bin].alpha == 0){
+            _qpix_output[bin].red = color.red;
+            _qpix_output[bin].green = color.green;
+            _qpix_output[bin].blue = color.blue;
+            _qpix_output[bin].alpha = color.alpha;
+            _qpix_output[bin].priority = color.priority;
+        }
+        else if (color.priority > _qpix_output[bin].priority &&
+                 color.alpha < 255 && color.alpha > 0){
+
+            float bg_red = qb_as_float(_qpix_output[bin].red);
+            float bg_green = qb_as_float(_qpix_output[bin].green);
+            float bg_blue = qb_as_float(_qpix_output[bin].blue);
+            float bg_alpha = qb_as_float(_qpix_output[bin].alpha);
+
+            float fg_red = qb_as_float(color.red);
+            float fg_green = qb_as_float(color.green);
+            float fg_blue = qb_as_float(color.blue);
+            float fg_alpha = qb_as_float(color.alpha);
+
+            float new_alpha =
+                fg_alpha + bg_alpha * (1-fg_alpha);
+
+            _qpix_output[bin].red = qb_color_clamp(
+                (fg_red * fg_alpha + bg_red * bg_alpha * (1 - fg_alpha)) /
+                new_alpha,
+                0, 1
+            );
+
+            _qpix_output[bin].green = qb_color_clamp(
+                (fg_green * fg_alpha + bg_green * bg_alpha * (1 - fg_alpha)) /
+                new_alpha,
+                0, 1
+            );
+
+            _qpix_output[bin].blue = qb_color_clamp(
+                (fg_blue * fg_alpha + bg_blue * bg_alpha * (1 - fg_alpha)) /
+                new_alpha,
+                0, 1
+            );
+
+            _qpix_output[bin].alpha = qb_color_clamp(new_alpha, 0, 1);
+            _qpix_output[bin].priority = color.priority;
+        }
+        else if (color.priority < _qpix_output[bin].priority &&
+                 _qpix_output[bin].alpha < 255 && _qpix_output[bin].alpha > 0){
+
+            float fg_red = qb_as_float(_qpix_output[bin].red);
+            float fg_green = qb_as_float(_qpix_output[bin].green);
+            float fg_blue = qb_as_float(_qpix_output[bin].blue);
+            float fg_alpha = qb_as_float(_qpix_output[bin].alpha);
+
+            float bg_red = qb_as_float(color.red);
+            float bg_green = qb_as_float(color.green);
+            float bg_blue = qb_as_float(color.blue);
+            float bg_alpha = qb_as_float(color.alpha);
+
+            float new_alpha =
+                fg_alpha + bg_alpha * (1-fg_alpha);
+
+            _qpix_output[bin].red = qb_color_clamp(
+                (fg_red * fg_alpha + bg_red * bg_alpha * (1 - fg_alpha)) /
+                new_alpha,
+                0, 1
+            );
+
+            _qpix_output[bin].green = qb_color_clamp(
+                (fg_green * fg_alpha + bg_green * bg_alpha * (1 - fg_alpha)) /
+                new_alpha,
+                0, 1
+            );
+
+            _qpix_output[bin].blue = qb_color_clamp(
+                (fg_blue * fg_alpha + bg_blue * bg_alpha * (1 - fg_alpha)) /
+                new_alpha,
+                0, 1
+            );
+
+            _qpix_output[bin].alpha = qb_color_clamp(new_alpha, 0, 1);
+
+        }
+    }
+
+}
+
+void histogram_output_prgb888(quibble_point_2D pt,
+                              quibble_pcolor_rgb888 color,
+                              quibble_simple_camera qcam,
+                             __global quibble_pcolor_rgb888 *_qpix_output){
+    int bin = qb_find_bin(pt.x, pt.y, qcam);
+    if (bin > 0 && color.priority > _qpix_output[bin].priority){
+        _qpix_output[bin].red = color.red;
+        _qpix_output[bin].green = color.green;
+        _qpix_output[bin].blue = color.blue;
+        _qpix_output[bin].priority = color.priority;
+    }
+}
+
+void histogram_overwrite_prgba8888(quibble_point_2D pt,
+                                   quibble_pcolor_rgba8888 color,
+                                   quibble_simple_camera qcam,
+                                  __global quibble_pcolor_rgba8888 *_qpix_output){
+    int bin = qb_find_bin(pt.x, pt.y, qcam);
+    if (bin > 0){
+        _qpix_output[bin].red = color.red;
+        _qpix_output[bin].green = color.green;
+        _qpix_output[bin].blue = color.blue;
+        _qpix_output[bin].alpha = color.alpha;
+        _qpix_output[bin].priority = color.priority;
+    }
+}
+
+void histogram_overwrite_prgb888(quibble_point_2D pt,
+                                 quibble_pcolor_rgb888 color,
+                                 quibble_simple_camera qcam,
+                                __global quibble_pcolor_rgb888 *_qpix_output){
+    int bin = qb_find_bin(pt.x, pt.y, qcam);
+    if (bin > 0){
+        _qpix_output[bin].red = color.red;
+        _qpix_output[bin].green = color.green;
+        _qpix_output[bin].blue = color.blue;
+        _qpix_output[bin].priority = color.priority;
+    }
+}
+
+quibble_point_2D qb_find_point_location(int idx, quibble_simple_camera qcam){
+    int width = qb_find_camera_width(qcam);
+    int height = qb_find_camera_height(qcam);
+
+    quibble_point_2D pt;
+    pt.y = ((floor((float)(idx / width))+0.5)/height)*qcam.world_size_y + qcam.world_position_y;
+    pt.x = (((float)(idx % width) + 0.5)/width)*qcam.world_size_x + qcam.world_position_x;
+
+    return pt;
+}
+
+
+
+#endif
+
+quibble_point_2D rotate(quibble_point_2D pt, float theta){
+    return qb_point_2D((pt.x*cos(theta) - pt.y*sin(theta)),
+                       (pt.x*sin(theta) + pt.y*cos(theta)));
+}
+
+quibble_point_2D stretch(quibble_point_2D pt, float stretch_factor){
+    return qb_point_2D(pt.x/stretch_factor, pt.y*stretch_factor);
+}
+

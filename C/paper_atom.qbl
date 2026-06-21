@@ -14,33 +14,13 @@ __verse nucleus(quibble_point_2D pt |
                 int num_ignore = 20;
                 float circle_radius = 0.3;){
 
-    pt.x *= circle_radius;
-    pt.y *= circle_radius;
+    pt.x *= circle_radius*1.5;
+    pt.y *= circle_radius*1.5;
 
     quibble_point_2D out_pt = pt;
 
     // now find all locations of other circles
     if (_i > num_ignore){
-        histogram_output_prgba8888(out_pt, qcolor, cam, qps);
-
-        out_pt.x += 1.05*circle_radius;
-        histogram_output_prgba8888(out_pt, qcolor, cam, qps);
-
-        out_pt.x -= 2.1*circle_radius;
-        histogram_output_prgba8888(out_pt, qcolor, cam, qps);
-
-        out_pt.x += 1.05*circle_radius;
-        out_pt.x += 1.05*circle_radius*0.5;
-        out_pt.y += 1.05*circle_radius*0.866025;
-        histogram_output_prgba8888(out_pt, qcolor, cam, qps);
-
-        out_pt.x -= 1.05*circle_radius;
-        histogram_output_prgba8888(out_pt, qcolor, cam, qps);
-
-        out_pt.y *= -1;
-        histogram_output_prgba8888(out_pt, qcolor, cam, qps);
-
-        out_pt.x += 1.05*circle_radius;
         histogram_output_prgba8888(out_pt, qcolor, cam, qps);
    }
 }
@@ -50,46 +30,45 @@ __verse electrons(quibble_point_2D pt, float time |
                   float beta = 1;
                   int num_ignore = 20;
                   float circle_radius = 0.3;){
+    pt.x *= circle_radius;
+    pt.y *= circle_radius;
 
     pt.y += (beta)*pt.x*pt.x*0.33333;
-    pt.x *= 2;
-
-    // FORBIDDEN SHRINKAGE
-    pt.x *= 0.5*circle_radius;
-    pt.y *= 0.5*circle_radius;
 
     pt.y -= circle_radius*2;
 
     quibble_point_2D ref_pt = pt;
     quibble_point_2D out_pt = pt;
 
+    float stretch_factor = 1.5;
+
     if (_i > num_ignore){
 
         pt = rotate(pt, M_PI*time);
-        out_pt = stretch(pt, 2);
+        out_pt = stretch(pt, stretch_factor);
         histogram_output_prgba8888(out_pt, qcolor, cam, qps);
 
         pt = rotate(pt, M_PI/3);
-        out_pt = stretch(pt, 2);
+        out_pt = stretch(pt, stretch_factor);
         out_pt = rotate(out_pt, M_PI/3);
         histogram_output_prgba8888(out_pt, qcolor, cam, qps);
 
         pt = rotate(pt, M_PI/3);
-        out_pt = stretch(pt, 2);
+        out_pt = stretch(pt, stretch_factor);
         out_pt = rotate(out_pt, 2*M_PI/3);
         histogram_output_prgba8888(out_pt, qcolor, cam, qps);
 
         pt = rotate(pt, M_PI/3);
-        out_pt = stretch(pt, 2);
+        out_pt = stretch(pt, stretch_factor);
         histogram_output_prgba8888(out_pt, qcolor, cam, qps);
 
         pt = rotate(pt, M_PI/3);
-        out_pt = stretch(pt, 2);
+        out_pt = stretch(pt, stretch_factor);
         out_pt = rotate(out_pt, M_PI/3);
         histogram_output_prgba8888(out_pt, qcolor, cam, qps);
 
         pt = rotate(pt, M_PI/3);
-        out_pt = stretch(pt, 2);
+        out_pt = stretch(pt, stretch_factor);
         out_pt = rotate(out_pt, 2*M_PI/3);
         histogram_output_prgba8888(out_pt, qcolor, cam, qps);
     }
@@ -102,8 +81,8 @@ __poem atom_shader(quibble_pixels_prgba8888 qps,
     quibble_pcolor_rgba8888 qcolor = qb_pcolor_rgba8888(1,1,1,1,1);
 
     @SCALL circle_chaos(50, qcam, qcolor | radius = 0.5;){
-        @VCALL electrons(_pt, time | beta = 1;);
-        @VCALL nucleus(_pt);
+        @VCALL electrons(_pt, time | beta = 10; float circle_radius = 0.75;);
+        @VCALL nucleus(_pt | float circle_radius = 0.75;);
     }
 }
 

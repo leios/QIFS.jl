@@ -24,6 +24,8 @@ int main(void){
 
     int width = 1024;
     int height = 1024;
+    //int width = 128;
+    //int height = 128;
     quibble_pixels qpix = 
         qb_create_pixel_array(qp, width, height, PRGBA8888);
 

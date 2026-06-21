@@ -31,4 +31,7 @@ JuliaLocalPreferences.toml
 notes/*
 *jld2
 *.png
+*.mp4
 .DS_Store
+
+*.out
