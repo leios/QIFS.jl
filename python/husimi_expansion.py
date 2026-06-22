@@ -32,11 +32,13 @@ def get_superoperator_expansion(d,scaling):
 
     mat_superop = np.zeros((d**2, d**2), dtype=float)
 
-    for k in range(d):
-        for s in range(d):
-            ind1 = k*d + s
+    for s in range(d):
+        for k in range(d):
+            # ind1 = k*d + s
+            ind1 = k + s*d # index = row + (col - 1) * d
             for j in range(min(d-k,d-s)):
-                ind2 = (k+j)*d + s+j
+                # ind2 = (k+j)*d + s+j
+                ind2 = k+j + (s+j)*d
                 log_coeff_ket = log_binomial(k+j,k)/2 + (k+1)*np.log(scaling) + (j/2)*np.log(1-scaling**2)
                 log_coeff_bra = log_binomial(s+j,s)/2 + (s+1)*np.log(scaling) + (j/2)*np.log(1-scaling**2)
                 mat_superop[ind2,ind1] += np.exp(log_coeff_ket)*np.exp(log_coeff_bra)
