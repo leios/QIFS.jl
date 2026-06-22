@@ -4,6 +4,7 @@ using PyPlot
 # using Plots
 using JLD2
 # using QuantumToolbox
+using BlockDiagonals
 
 #=-----------------------------------------------------------------------------#
 EXAMPLE 8
@@ -430,8 +431,8 @@ function shearing(N,beta)
     matX = (matAdag+matA)/sqrt(2)
     matP = 1im*(matAdag-matA)/sqrt(2)
 
-    # matS = exp(1im*beta*matX*matX)
-    matS = exp(1im*beta*matX^3)
+    matS = exp(1im*beta*matX*matX)
+    # matS = exp(1im*beta*matX^3)
     # matS = exp(1im*beta*matX*matP)
 
     return matS
@@ -477,6 +478,42 @@ function expansion(N,lambda,rho)
     return rho1
 
 end
+
+function get_superoperator_expansion()
+
+    # super operator for expansion
+
+    N = 2^5
+    mat = zeros(ComplexF64, N^2, N^2)
+
+    for k = 0:N-1
+        for s = 0:N-1
+
+            ind1 = k+1 + (s+1)*N # wrong
+
+            for j = 0:min(N-1-k,N-1-s)
+
+                ind2 = k+j+1 + (s+j+1)*N
+
+                log_coeff_ket = log_binomial(k+j,k)/2 + (k+1)*log(lambda) + (j/2)*log(1-lambda^2)
+                log_coeff_bra = log_binomial(s+j,s)/2 + (s+1)*log(lambda) + (j/2)*log(1-lambda^2)
+
+                mat[ind2,ind1] += exp(log_coeff_ket)*exp(log_coeff_bra)
+
+            end
+        end
+    end
+
+    return mat
+
+end
+
+function get_kraus_expansion()
+
+    mat = get_superoperator_expansion()
+
+end
+
 
 function squeezing(N,chi)
 
@@ -578,6 +615,7 @@ function example_fock()
 
     #
     rho0 .= 0.0
+    # rho0[10,10] = 1.0
     for n = 1:10
         rho0[n,n] = 1.0
     end
@@ -638,7 +676,7 @@ function example_fock()
     # rhot .= division_X(rhot,matFtoX,matFtoP,L0,N)
 
     #
-    matI = [1.0,0]
+    # matI = [1.0,0]
     # matD2 = kron(matD,matD)
     # rhot = matD2'*rhot*matD
 
@@ -656,11 +694,68 @@ function example_fock()
     pcolor(q_range, p_range, abs.(f_husimi)')
     colorbar()
 
-    figure()
-    plot(abs.(f_husimi[Int64(N/2),:]))
+    # figure()
+    # plot(abs.(f_husimi[Int64(N/2),:]))
 
     println("total time:",round(time()-t0; digits = 3),"sec")
 
+
+end
+
+function example_fock_duplication()
+
+    N = 2^5 #2^6
+
+    # maping from fock basis to position or momentum basis
+    matFtoX, matFtoP, array_x = map_from_fock_to_position_or_momentum(N)
+
+    # return array_x
+
+    # define initail state rho0
+    rho0 = zeros(ComplexF64, N, N)
+    for n = 1:2^3 #2^3
+        rho0[n,n] = 1.0
+    end
+    rho0 .= rho0/tr(rho0)
+
+    ancilla = [1,1]/sqrt(2)
+    ancilla = ancilla*ancilla'
+    rho0 = kron(ancilla,rho0)
+
+    # return rho0
+
+    #
+    alpha = 4.0
+    matD2 = BlockDiagonal([displacement(N,-alpha),displacement(N,alpha)])
+    rhot = matD2*rho0*matD2'
+
+    # return rhot
+
+    rhot_ptraceout = zeros(ComplexF64, N, N)
+
+    for i = 1:N
+        for j = 1:N
+            rhot_ptraceout[i,j] = rhot[i,j] + rhot[i+N,j+N]
+        end
+    end
+    rhot = rhot_ptraceout
+
+    # plot husimi
+    println(tr(rhot))
+    println("preparing for husimi")
+
+    q_range = copy(array_x) 
+    # q_range = collect(range(0.0, 10.0, length=N))
+    p_range = copy(q_range)
+    mat_husimi = prepation_husimi_fock(q_range, p_range, N)
+    f_husimi = husimi(N,rhot,mat_husimi,q_range,p_range)
+
+    figure()
+    pcolor(q_range, p_range, abs.(f_husimi)')
+    colorbar()
+
+    # figure()
+    # plot(abs.(f_husimi[Int64(N/2),:]))
 
 end
 

@@ -11,6 +11,12 @@ def generate_mat_displacement(matA,matAdag,alpha):
     matD = expm(alpha/np.sqrt(2) * matAdag - np.conj(alpha)/np.sqrt(2) * matA)
     return matD
 
+def get_superoperator_expansion(N):
+    mat_superop = np.zeros((d, d), dtype=complex)
+    for k in range(N):
+        for s in range(N):
+            ind1 = k + s*(N-1)
+
 dephasing_ops = [
     np.array([[1, 0], [0, 0]]),
     np.array([[0, 0], [0, 1]])
