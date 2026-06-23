@@ -6,11 +6,16 @@ using Images
 using SparseArrays
 using Plots
 
-# function nucleus(circle_radius = 0.3)
-# end
+function clip_arr!(arr, threshold)
 
-# function electrons(time; beta = 1, circle_radius = 0.3)
-# end
+    for i = 1:length(arr)
+        if arr[i] > threshold
+            arr[i] = 1
+        else
+            arr[i] = 0
+        end
+    end
+end
 
 function make_scene(num_qubit,num_ancilla,M,t)
 
@@ -57,6 +62,7 @@ function make_scene(num_qubit,num_ancilla,M,t)
             matSx3 = blockdiag(matSx3,matI)
         end
     end
+
     # matSx3 = BlockDiagonal([matI,shearing_x2(d,1/3),shearing_x2(d,1/3),shearing_x2(d,1/3)])
     rhot .= matSx3*rhot*matSx3'
     # println("total time:",round(time()-t0; digits = 3),"sec")
@@ -191,10 +197,10 @@ function test_make_scene_on_husimi(t)
 
 end
 
-function make_animation(; final_time = 1)
+function make_animation(; final_time = 1, clip = false, threshold = 0.5)
 
     # system parameters
-    num_qubit = 7
+    num_qubit = 8
     num_ancilla = 3
     M = 2
     d = 2^num_qubit
@@ -213,16 +219,26 @@ function make_animation(; final_time = 1)
     time = 0
 
     i = 0
-    while time < final_time
+    while time < final_time - 1/fps
+    #while time < 1/fps
+
 
         # time evolution
         rhot .= make_scene(num_qubit,num_ancilla,M,time)
         f_husimi .= husimi(d,rhot,mat_husimi,q_range,p_range)
-        output_image = heatmap(abs.(f_husimi)'; aspect_ratio=1, colorbar=false, axis=false)
 
+        output_arr = Array(abs.(f_husimi)')
+        if clip
+            clip_arr!(output_arr, threshold)
+        end
+
+        output_image = heatmap(output_arr;
+                               aspect_ratio=1, colorbar=false, axis=false,
+                               size=(1024, 1024))
         filename = "check"*lpad(i, 4, "0")*".png"
         println(filename)
         save(filename, output_image)
+
         i += 1
         time += 1/fps
 
