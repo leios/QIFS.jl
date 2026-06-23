@@ -1,0 +1,103 @@
+@include "QB/chaos.qbl"
+@include "QB/output.qbl"
+
+__poem clear_bg_arr(__global int *arr,
+                    quibble_simple_camera qcam){
+    quibble_point_2D pt = qb_find_point_location(_idx, qcam);
+    int bin = qb_find_bin(pt.x, pt.y, qcam);
+    arr[bin] = 0;
+}
+
+
+quibble_point_2D rotate(quibble_point_2D pt, float theta){
+    return qb_point_2D((pt.x*cos(theta) - pt.y*sin(theta)),
+                       (pt.x*sin(theta) + pt.y*cos(theta)));
+}
+
+quibble_point_2D stretch(quibble_point_2D pt, float stretch_factor){
+    return qb_point_2D(pt.x/stretch_factor, pt.y*stretch_factor);
+}
+
+__verse nucleus(quibble_point_2D pt |
+                int num_ignore = 20;
+                float circle_radius = 0.3;){
+
+    pt.x *= circle_radius*1.5;
+    pt.y *= circle_radius*1.5;
+
+    quibble_point_2D out_pt = pt;
+
+    // now find all locations of other circles
+    if (_i > num_ignore){
+        int bin = qb_find_bin(pt.x, pt.y, cam);
+        atomic_add(arr+bin, 2);
+    }
+}
+
+__verse electrons(quibble_point_2D pt, float time |
+                  float beta = 1;
+                  int num_ignore = 20;
+                  float circle_radius = 0.3;){
+    pt.x *= circle_radius;
+    pt.y *= circle_radius;
+
+    pt.y += (beta)*pt.x*pt.x*0.33333;
+
+    pt.y -= circle_radius*2;
+
+    quibble_point_2D ref_pt = pt;
+    quibble_point_2D out_pt = pt;
+
+    float stretch_factor = 1.5;
+
+    int bin = 0;
+
+    if (_i > num_ignore){
+        pt = rotate(pt, M_PI*time);
+        out_pt = stretch(pt, stretch_factor);
+        bin = qb_find_bin(out_pt.x, out_pt.y, cam);
+        atomic_add(arr+bin, 1);
+
+        pt = rotate(pt, M_PI/3);
+        out_pt = stretch(pt, stretch_factor);
+        out_pt = rotate(out_pt, M_PI/3);
+        bin = qb_find_bin(out_pt.x, out_pt.y, cam);
+        atomic_add(arr+bin, 1);
+
+        pt = rotate(pt, M_PI/3);
+        out_pt = stretch(pt, stretch_factor);
+        out_pt = rotate(out_pt, 2*M_PI/3);
+        bin = qb_find_bin(out_pt.x, out_pt.y, cam);
+        atomic_add(arr+bin, 1);
+
+        pt = rotate(pt, M_PI/3);
+        out_pt = stretch(pt, stretch_factor);
+        bin = qb_find_bin(out_pt.x, out_pt.y, cam);
+        atomic_add(arr+bin, 1);
+
+        pt = rotate(pt, M_PI/3);
+        out_pt = stretch(pt, stretch_factor);
+        out_pt = rotate(out_pt, M_PI/3);
+        bin = qb_find_bin(out_pt.x, out_pt.y, cam);
+        atomic_add(arr+bin, 1);
+
+        pt = rotate(pt, M_PI/3);
+        out_pt = stretch(pt, stretch_factor);
+        out_pt = rotate(out_pt, 2*M_PI/3);
+        bin = qb_find_bin(out_pt.x, out_pt.y, cam);
+        atomic_add(arr+bin, 1);
+    }
+}
+
+__poem atom_shader(__global int *arr,
+                   quibble_simple_camera qcam,
+                   float time){
+
+    quibble_pcolor_rgba8888 qcolor = qb_pcolor_rgba8888(1,1,1,1,1);
+
+    @SCALL circle_chaos(50, qcam, qcolor | radius = 0.5;){
+        @VCALL electrons(_pt, time | beta = 10; float circle_radius = 0.75;);
+        @VCALL nucleus(_pt | float circle_radius = 0.75;);
+    }
+}
+
