@@ -48,9 +48,9 @@ def get_superoperator_expansion(d,scaling):
 N = 5 # number of qubits
 d = 2**N
 num_shots = 5000
-M = 3 # size of circle, less than N
+M = 0 #3 # size of circle, less than N
 size_q = 20
-scaling = 0.8 # (x, p) -> (x/scaling, p/scaling)
+scaling = 0.5 # (x, p) -> (x/scaling, p/scaling)
 
 # for displacement operator
 matAdag = np.zeros((d, d), dtype=complex)
@@ -77,6 +77,8 @@ leakage_matrix = identity - sum_K_dagger_K
 K_dump = sqrtm(leakage_matrix)
 kraus_list_scaling_cptp = list(kraus_matrix_scaling) + [K_dump]
 channel_scaling_cptp = Kraus(kraus_list_scaling_cptp)
+
+print("leaking:",np.trace(leakage_matrix)/d)
 
 # print("Is CPTP?:", channel_scaling_cptp.is_cptp())  # CPTP
 # print("Is CP?:",   channel_scaling_cptp.is_cp())    # Complete Positivity

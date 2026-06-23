@@ -5,6 +5,7 @@ using PyPlot
 using JLD2
 # using QuantumToolbox
 using BlockDiagonals
+# using QuantumInformation
 
 #=-----------------------------------------------------------------------------#
 EXAMPLE 8
@@ -439,6 +440,25 @@ function shearing(N,beta)
 
 end
 
+function shearing_x2(N,beta)
+
+    matAdag = zeros(N,N)
+    for n = 1:N-1
+        matAdag[n+1,n] = sqrt(n)
+    end
+    matA = matAdag'
+
+    matX = (matAdag+matA)/sqrt(2)
+    matP = 1im*(matAdag-matA)/sqrt(2)
+
+    # matS = exp(1im*beta*matX*matX)
+    matS = exp(1im*beta/3*matX^3)
+    # matS = exp(1im*beta*matX*matP)
+
+    return matS
+
+end
+
 function log_binomial(a::Int64,b::Int64)
 
     result_denominator = 0.0
@@ -479,21 +499,22 @@ function expansion(N,lambda,rho)
 
 end
 
-function get_superoperator_expansion()
+function get_superoperator_expansion(d,lambda)
 
     # super operator for expansion
 
-    N = 2^5
-    mat = zeros(ComplexF64, N^2, N^2)
+    mat = zeros(ComplexF64, d^2, d^2)
 
-    for k = 0:N-1
-        for s = 0:N-1
+    for s = 0:d-1
+        for k = 0:d-1
 
-            ind1 = k+1 + (s+1)*N # wrong
+            # ind1 = k*d + s+1 
+            ind1 = k + s*d + 1 #index = row + (col - 1) * d
 
-            for j = 0:min(N-1-k,N-1-s)
+            for j = 0:min(d-1-k,d-1-s)
 
-                ind2 = k+j+1 + (s+j+1)*N
+                # ind2 = (k+j)*d + s+j+1
+                ind2 = k+j + (s+j)*d + 1
 
                 log_coeff_ket = log_binomial(k+j,k)/2 + (k+1)*log(lambda) + (j/2)*log(1-lambda^2)
                 log_coeff_bra = log_binomial(s+j,s)/2 + (s+1)*log(lambda) + (j/2)*log(1-lambda^2)
@@ -508,12 +529,66 @@ function get_superoperator_expansion()
 
 end
 
-function get_kraus_expansion()
+function get_kraus_expansion(d,lambda)
 
-    mat = get_superoperator_expansion()
+    mat_superop = get_superoperator_expansion(d,lambda)
+
+    choi = zeros(ComplexF64, d, d, d, d)
+    for i = 1:d
+        for j = 1:d
+            for k = 1:d 
+                for l = 1:d
+                    row_idx = i + (k - 1) * d #index = row + (col - 1) * d
+                    col_idx = j + (l - 1) * d
+                    choi[i, j, k, l] = mat_superop[row_idx, col_idx]
+                end
+            end
+        end
+    end
+    
+    # reshape to a standard Choi matrix
+    choi_mat = reshape(choi, d^2, d^2)
+    
+    # Eigendecomposition of the Choi matrix
+    vals, vecs = eigen(choi_mat)
+    
+    # Filter physical Kraus operators (positive eigenvalues)
+    kraus_ops = Matrix{ComplexF64}[]
+    for m = 1:length(vals)
+        if real(vals[m]) > 1e-10
+            # Reshape the eigenvector back to a d x d Kraus operator
+            k_op = sqrt(real(vals[m])) .* reshape(vecs[:, m], d, d)
+            push!(kraus_ops, k_op)
+        end
+    end
+
+    matI = Matrix{Float64}(I, d, d)
+    sum_kraus = zeros(ComplexF64,d,d)
+    for kraus in kraus_ops
+        sum_kraus += kraus'*kraus
+    end
+    leaking = matI - sum_kraus
+    kraus_dump = sqrt(leaking)
+    push!(kraus_ops, kraus_dump)
+
+    println(tr(leaking)/d)
+
+    return kraus_ops
 
 end
 
+function expansion_kraus(d,lambda,rho)
+
+    rho1 = zeros(ComplexF64, d, d)
+    kraus_ops = get_kraus_expansion(d,lambda)
+
+    for kraus in kraus_ops
+        rho1 += kraus*rho*kraus'
+    end
+
+    return rho1
+
+end
 
 function squeezing(N,chi)
 
@@ -598,7 +673,7 @@ end
 
 function example_fock()
 
-    N = 200
+    N = 2^7 #200
     M = Int64(N/4)
     L = Int64(N/4)
     
@@ -615,8 +690,8 @@ function example_fock()
 
     #
     rho0 .= 0.0
-    # rho0[10,10] = 1.0
-    for n = 1:10
+    # rho0[1,1] = 1.0
+    for n = 1:2^3
         rho0[n,n] = 1.0
     end
     # rho0[5,1] = 1
@@ -625,17 +700,14 @@ function example_fock()
     # rho0 = psi0*psi0'
     # rho0 = Matrix{ComplexF64}(I, N, N)/N
 
-    # ancilla = [1,1]/sqrt(2)
-    # ancilla = ancilla*ancilla'
-    # rho0 = kron(ancilla,rho0)
-
     # define density matrices
     rhot = copy(rho0) # time-evolved state to track
+    rhot_1 = copy(rho0) # time-evolved state to track
     rhot_X = copy(rhot)
     rhot_P = copy(rhot)
     rhot1_X = copy(rhot)
     rhot1_P = copy(rhot)
-    
+
     # measure time
     t0 = time()
     println(tr(rhot))
@@ -665,20 +737,21 @@ function example_fock()
     # expansion
     lambda = 0.5 # needs to be smaller than 1
     # rhot .= expansion(N,lambda,rhot)
+    # rhot .= expansion_kraus(N,lambda,rhot)
     
     # squeezing
     chi = 1.0
     matSq = squeezing(N,chi)
     # rhot .= matSq*rhot*matSq'
 
+    # (x,y) -> (x,y+beta*x^2)
+    beta = 1/3
+    matSx3 = shearing_x2(N,beta)
+    rhot .= matSx3*rhot*matSx3'
+
     # division (not working but the same thing works in a periodic system; see example_square_decoupled and map_division!)
     # L0 = Int64(N/2)
     # rhot .= division_X(rhot,matFtoX,matFtoP,L0,N)
-
-    #
-    # matI = [1.0,0]
-    # matD2 = kron(matD,matD)
-    # rhot = matD2'*rhot*matD
 
     # plot husimi
     println(tr(rhot))
@@ -698,7 +771,6 @@ function example_fock()
     # plot(abs.(f_husimi[Int64(N/2),:]))
 
     println("total time:",round(time()-t0; digits = 3),"sec")
-
 
 end
 
