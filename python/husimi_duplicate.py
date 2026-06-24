@@ -65,7 +65,7 @@ for i, q in enumerate(q_range):
         qc.h(N-1)
         qc.append(dephasing_channel.to_instruction(), [N-1])
         
-        mat_diplication = generate_mat_diplication(matA,matAdag,-4.0,4.0)
+        mat_diplication = generate_mat_diplication(matA,matAdag,-4.0,4.0+1j)
         gate_diplication = UnitaryGate(mat_diplication, label="diplication")
         qc.append(gate_diplication, list_all_qubits)
 

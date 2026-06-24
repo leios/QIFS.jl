@@ -1,8 +1,8 @@
 import matplotlib.pyplot as plt
-import bosonic_qiskit
 import qiskit
 import numpy
 import random
+import time
 from scipy.linalg import expm, block_diag
 from scipy.linalg import sqrtm
 from qiskit import transpile
@@ -10,72 +10,147 @@ from qiskit import QuantumCircuit
 from qiskit.circuit.library import UnitaryGate
 from qiskit_aer import AerSimulator
 from qiskit_ibm_runtime import QiskitRuntimeService
-from qiskit.quantum_info import DensityMatrix, state_fidelity, Kraus, Stinespring, Operator
+from qiskit.quantum_info import DensityMatrix, state_fidelity, Kraus, Stinespring, Operator, Statevector
 from qiskit_experiments.library import StateTomography
 
-def make_displacement_circuit(x, y, xmax, ymax, qmr, max_value = 2*numpy.pi):
+#------------------------------------------------------------------------------#
+# AUX
+#  Notes: Regenerating matA's... meh
+#------------------------------------------------------------------------------#
+
+def make_filename(i):
+    return "dens%04d.npy" % i
+
+def rotate_in_phase_space(val, theta):
+    re = val.real*numpy.cos(theta) - val.imag*numpy.sin(theta)
+    im = val.real*numpy.sin(theta) + val.imag*numpy.cos(theta)
+    return re + im*1j
+
+def generate_mat_displacement(nqpm,alpha):
+    N = 2**nqpm
+    matAdag = numpy.zeros((N, N), dtype=complex)
+    for i in range(N-1):
+        matAdag[i+1, i] = numpy.sqrt(i+1)
+    matA = matAdag.T
+
+    matD = expm(alpha/numpy.sqrt(2) * matAdag - numpy.conj(alpha)/numpy.sqrt(2) * matA)
+    return matD
+
+def generate_mat_rotation(N, theta):
+    matN = numpy.diag(range(N))
+    matR = expm(theta*matN*1j)
+    return matR
+
+def generate_mat_squeeze(N, r, theta):
+    matAdag = numpy.zeros((N, N), dtype=complex)
+    for i in range(N-1):
+        matAdag[i+1, i] = numpy.sqrt(i+1)
+    matA = matAdag.T
+
+    chi = r * numpy.exp(theta * 1j)
+
+    matS = (numpy.conj(chi)*matA**2 - chi*matAdag**2)/2
+    matS = expm(matS)
+
+    return matS
+
+def generate_mat_shearingx2(N, beta):
+    matAdag = numpy.zeros((N, N), dtype=complex)
+    for i in range(N-1):
+        matAdag[i+1, i] = numpy.sqrt(i+1)
+    matA = matAdag.T
+
+    matX = (matAdag+matA)/numpy.sqrt(2)
+    matP = 1j*(matAdag-matA)/numpy.sqrt(2)
+
+    matS = expm(1j*(beta/3)*matX**3)
+
+    return matS
+
+def generate_mat_d_rotation(nqpm, theta1, theta2):
+    N = 2**nqpm
+    matD1 = generate_mat_rotation(N, theta1)
+    matD2 = generate_mat_rotation(N, theta2)
+    return block_diag(matD1,matD2)
+
+def generate_mat_d_squeeze(nqpm, r, theta):
+    N = 2**nqpm
+    matD1 = generate_mat_squeeze(N, r, theta)
+    return block_diag(matD1,matD1)
+
+def generate_mat_d_shearingx2(nqpm, beta):
+    N = 2**nqpm
+    matD1 = generate_mat_shearingx2(N, beta)
+    return block_diag(matD1,matD1)
+
+def generate_mat_d_displacement(nqpm,alpha1,alpha2):
+    matD1 = generate_mat_displacement(nqpm,alpha1)
+    matD2 = generate_mat_displacement(nqpm,alpha2)
+    return block_diag(matD1,matD2)
+
+def make_displacement_circuit(x, y, xmax, ymax, num_bits, max_value = 2*numpy.pi):
     x_ratio = max_value*x/xmax
     y_ratio = max_value*y/xmax
-    move_ref_circuit = bosonic_qiskit.CVCircuit(qmr)
-    move_ref_circuit.cv_d(-0.5*max_value+x_ratio+(-0.5*max_value+y_ratio)*1j,qmr[0])
-    return move_ref_circuit
+    alpha = -0.5*max_value+x_ratio+(-0.5*max_value+y_ratio)*1j
 
-def append_displacement_circuit(x, y, xmax, ymax, qmr, circuit):
-    x_ratio = 2*numpy.pi*x/xmax
-    y_ratio = 2*numpy.pi*y/xmax
-    circuit.cv_d(-numpy.pi+x_ratio+(-numpy.pi+y_ratio)*1j,qmr[0])
+    d = 2**num_bits
+
+    mat_displacement = generate_mat_displacement(num_bits, alpha)
+
+    gate_displacement = UnitaryGate(mat_displacement, label="displacement_operator")
+    qc = QuantumCircuit(num_bits)
+    qc.append(gate_displacement, [i for i in range(num_bits)])
+    return qc
+
+#------------------------------------------------------------------------------#
+# HUSIMI
+#------------------------------------------------------------------------------#
 
 # maybe partial trace?
-def simple_husimi(xmax, ymax, backend, dens_mat, nqpm, max_value = 2*numpy.pi):
+def simple_husimi(xmax, ymax, dens_mat, nqpm, max_value = 2*numpy.pi):
     fids = numpy.zeros((xmax, ymax))
 
-    (qmr_ref, c_ref) = init_gaussian(nqpm)
-
-    state_ref, _, _ = bosonic_qiskit.util.simulate(c_ref)
+    c_ref = init_gaussian(nqpm)
 
     for i in range(0,xmax):
         for j in range(0,ymax):
-            c_move_ref = make_displacement_circuit(i, j, xmax, ymax, qmr_ref, max_value = max_value)
-            state_ref, _, _ = bosonic_qiskit.util.simulate(c_move_ref)
-
+            c_move_ref = make_displacement_circuit(i, j, xmax, ymax, nqpm, max_value = max_value)
+            state_ref = Statevector(c_move_ref)
             dens_mat_ref = qiskit.quantum_info.DensityMatrix(state_ref)
 
-            # trace out ancillary bit
-            #dens_mat_ref_partial = qiskit.quantum_info.partial_trace(dens_mat_ref, [nqpm])
-            #dens_mat1 = qiskit.quantum_info.partial_trace(full_dens_mat1, [1])
-
             fids[i][j] = state_fidelity(dens_mat, dens_mat_ref)
-            #print(fids[i][j])
     return fids
 
 def find_fidelity(mat1, mat2):
     sqrt_mat1 = sqrtm(mat1)
+    #mid_mat = numpy.trace(sqrtm(sqrt_mat1 @ mat2 @ sqrt_mat1))
+    #mid_mat = numpy.matmul(mid_mat, mid_mat)
+    #return numpy.real(mid_mat)
     return numpy.real(numpy.trace(sqrtm(sqrt_mat1 @ mat2 @ sqrt_mat1))**2)
 
-def husimi_with_duplicates(xmax, ymax, backend, dens_mat, nqpm, max_value = 2*numpy.pi, num_ancillary = 3):
-    fids = numpy.zeros((xmax, ymax, 8))
+def husimi_with_duplicates(xmax, ymax, dens_mat, nqpm, max_value = 2*numpy.pi, num_ancillary = 3):
+    total_objects = 2**num_ancillary
+    fids = numpy.zeros((xmax, ymax))
 
-    (qmr_ref, c_ref) = init_gaussian(nqpm)
-
-    #state_ref, _, _ = bosonic_qiskit.util.simulate(c_ref)
-
-    total_objects = num_ancillary**2
+    c_ref = init_gaussian(nqpm)
 
     for i in range(0,xmax):
         for j in range(0,ymax):
-            c_move_ref = make_displacement_circuit(i, j, xmax, ymax, qmr_ref, max_value = max_value) 
-            state_ref, _, _ = bosonic_qiskit.util.simulate(c_move_ref)
-
+            c_move_ref = make_displacement_circuit(i, j, xmax, ymax, nqpm, max_value = max_value)
+            state_ref = Statevector(c_move_ref)
             dens_mat_ref = qiskit.quantum_info.DensityMatrix(state_ref)
 
-            for k in range(total_objects-1):
-                stride = nqpm**2
+            for k in range(total_objects):
+                stride = 2**nqpm
                 dens_mat_mini = dens_mat.data[k*stride:(k+1)*stride, k*stride:(k+1)*stride]
                 new_fid = find_fidelity(dens_mat_mini, dens_mat_ref.data) / total_objects
 
-                fids[i][j][k] = new_fid
+                fids[i][j] = fids[i][j] + new_fid
     return fids
 
+#------------------------------------------------------------------------------#
+# HARDWARE
+#------------------------------------------------------------------------------#
 
 def find_backend():
     # Noisy simulator
@@ -83,27 +158,12 @@ def find_backend():
     backend = service.backend("ibm_kingston")
     return AerSimulator.from_backend(backend)
 
+#------------------------------------------------------------------------------#
+# INIT
+#------------------------------------------------------------------------------#
+
 def init_gaussian(nqpm, ancillary_bits = 0):
-    qmr = bosonic_qiskit.QumodeRegister(num_qumodes=1, num_qubits_per_qumode=nqpm)
-    if ancillary_bits > 0:
-        qr = qiskit.QuantumRegister(size=ancillary_bits)
-        init_c = bosonic_qiskit.CVCircuit(qmr, qr)
-
-        # init fock state at |0>
-        init_c.cv_initialize(0, qmr[0])
-
-        for i in range(ancillary_bits):
-            init_c.initialize([1,0], qr[i])
-
-        return (qmr, qr, init_c)
-    else:
-        init_c = bosonic_qiskit.CVCircuit(qmr)
-
-
-        # init fock state at |0>
-        init_c.cv_initialize(0, qmr[0])
-
-        return (qmr, init_c)
+    return QuantumCircuit(nqpm + ancillary_bits)
 
 # swirling
 def init_circle_set(N, M, num_circuits):
@@ -149,25 +209,9 @@ def init_ring(N):
 
     return qc
 
-# removing unnecessary resets from circuit after decomposition
-def decompose_init_circuit(init_c):
-    # ch = "circuit hardware"
-    init_ch = init_c.decompose().decompose()
-    init_ch.data = [
-        inst for inst in init_ch.data
-        if inst.operation.name != 'reset'
-    ]
-    return init_ch
-
-def generate_mat_displacement(matA,matAdag,alpha):
-    matD = expm(alpha/numpy.sqrt(2) * matAdag - numpy.conj(alpha)/numpy.sqrt(2) * matA)
-    return matD
-
-def rotate_in_phase_space(val, theta):
-    re = val.real*numpy.cos(theta) - val.imag*numpy.sin(theta)
-    im = val.real*numpy.sin(theta) + val.imag*numpy.cos(theta)
-    return re + im*1j
-
+#------------------------------------------------------------------------------#
+# ANIMATION
+#------------------------------------------------------------------------------#
 def generate_electrons(matA, matAdag, radius, nqpm):
 
     # top and bottom
@@ -193,30 +237,37 @@ def generate_electrons(matA, matAdag, radius, nqpm):
     matD8 = numpy.eye(2**nqpm)
     return block_diag(matD1,matD2, matD3, matD4, matD5, matD6, matD7, matD8)
 
-def generate_mat_diplication(matA,matAdag,alpha1,alpha2):
-    matD1 = generate_mat_displacement(matA,matAdag,alpha1)
-    matD2 = generate_mat_displacement(matA,matAdag,alpha2)
-    return block_diag(matD1,matD2)
+#------------------------------------------------------------------------------#
+# QIFS ROUTINES
+#------------------------------------------------------------------------------#
 
-def qifs_check(num_shots = 1024, nqpm = 4, max_value = 2*numpy.pi):
+def qifs_check(num_shots = 1024, nqpm = 6, max_value = 6*numpy.pi):
+    start = time.time()
     d0 = 2**nqpm
 
     ancillary_bits = 1
 
     qubit_list = list(range(nqpm + ancillary_bits))
 
-    qmr, qr, init_state_c = init_gaussian(nqpm, ancillary_bits = ancillary_bits)
-    init_state_c = decompose_init_circuit(init_state_c)
+    init_state_c = init_gaussian(nqpm, ancillary_bits = ancillary_bits)
+    init_state_c.h(nqpm+ancillary_bits-1)
     backend = AerSimulator()
 
-    matAdag = numpy.zeros((d0, d0), dtype=complex)
-    for i in range(d0-1):
-        matAdag[i+1, i] = numpy.sqrt(i+1)
-    matA = matAdag.T
+    mat_shearingx2 = generate_mat_d_shearingx2(nqpm, 10.0)
+    gate_shearingx2 = UnitaryGate(mat_shearingx2, label = "shearingx2")
+    init_state_c.append(gate_shearingx2, qubit_list)
 
-    #mat_diplication = generate_mat_diplication(matA,matAdag,-4.0,4.0+1j)
-    #gate_duplication = UnitaryGate(mat_diplication, label="electrons")
-    #init_state_c.append(gate_duplication, qubit_list)
+    mat_displacement = generate_mat_d_displacement(nqpm, 3.0j, 3.0j)
+    gate_displacement = UnitaryGate(mat_displacement, label="displacement")
+    init_state_c.append(gate_displacement, qubit_list)
+
+    mat_rot = generate_mat_d_rotation(nqpm, 0.5, -.5)
+    gate_rot = UnitaryGate(mat_rot, label="rot")
+    init_state_c.append(gate_rot, qubit_list)
+
+    #mat_squeeze = generate_mat_d_squeeze(nqpm, 1.0, 0.0)
+    #gate_squeeze = UnitaryGate(mat_squeeze, label = "squeeze")
+    #init_state_c.append(gate_squeeze, qubit_list)
 
     tomo_state = StateTomography(init_state_c, measurement_indices=qubit_list)
 
@@ -224,17 +275,21 @@ def qifs_check(num_shots = 1024, nqpm = 4, max_value = 2*numpy.pi):
 
     dens_mat_state = result_state.analysis_results("state", dataframe = True).iloc[0].value
 
+    print(time.time() - start)
     print("Finding husimi...")
-    fids = husimi_with_duplicates(50,50, backend, dens_mat_state, nqpm, max_value = max_value, num_ancillary = 1)
+    fids = husimi_with_duplicates(50,50, dens_mat_state, nqpm, max_value = max_value, num_ancillary = 1)
 
-    #plt.imshow(fids, cmap='hot', interpolation='nearest')
-    #plt.show()
+    #return (fids, dens_mat_state)
+
+    print(time.time() - start)
+    plt.imshow(fids, cmap='hot', interpolation='nearest')
+    plt.show()
 
     return fids
 
 
 
-def qifs_animation(num_shots = 1024, nqpm = 4, max_value = 2*numpy.pi):
+def qifs_animation(num_shots = 1024, nqpm = 4, max_value = 4*numpy.pi):
 
     d0 = 2**nqpm
 
@@ -242,8 +297,10 @@ def qifs_animation(num_shots = 1024, nqpm = 4, max_value = 2*numpy.pi):
 
     qubit_list = list(range(nqpm + ancillary_bits))
 
-    qmr, qr, init_state_c = init_gaussian(nqpm, ancillary_bits = ancillary_bits)
-    init_state_c = decompose_init_circuit(init_state_c)
+    init_state_c = init_gaussian(nqpm, ancillary_bits = ancillary_bits)
+    for i in range(ancillary_bits):
+        init_state_c.h(nqpm+ancillary_bits-1-i)
+
     backend = AerSimulator()
 
     matAdag = numpy.zeros((d0, d0), dtype=complex)
@@ -251,7 +308,7 @@ def qifs_animation(num_shots = 1024, nqpm = 4, max_value = 2*numpy.pi):
         matAdag[i+1, i] = numpy.sqrt(i+1)
     matA = matAdag.T
 
-    electrons = generate_electrons(matA, matAdag, 2, nqpm)
+    electrons = generate_electrons(matA, matAdag, 4, nqpm)
 
     gate_electrons = UnitaryGate(electrons, label="electrons")
     init_state_c.append(gate_electrons, qubit_list)
@@ -263,17 +320,16 @@ def qifs_animation(num_shots = 1024, nqpm = 4, max_value = 2*numpy.pi):
     dens_mat_state = result_state.analysis_results("state", dataframe = True).iloc[0].value
 
     print("Finding husimi...")
-    fids = husimi_with_duplicates(50,50, backend, dens_mat_state, nqpm, max_value = max_value)
+    fids = husimi_with_duplicates(50,50, dens_mat_state, nqpm, max_value = max_value)
 
-    #plt.imshow(fids, cmap='hot', interpolation='nearest')
-    #plt.show()
+    plt.imshow(fids, cmap='hot', interpolation='nearest')
+    plt.show()
 
     return fids
 
 
 def qifs_gaussian(num_shots = 1024, nqpm = 4, max_value = 2*numpy.pi):
-    qmr, init_state_c = init_gaussian(nqpm)
-    init_state_c = decompose_init_circuit(init_state_c)
+    init_state_c = init_gaussian(nqpm)
     backend = AerSimulator()
 
     tomo_state = StateTomography(init_state_c, measurement_indices=[i for i in range(0, nqpm)])
@@ -283,13 +339,12 @@ def qifs_gaussian(num_shots = 1024, nqpm = 4, max_value = 2*numpy.pi):
     dens_mat_state = result_state.analysis_results("state", dataframe = True).iloc[0].value
 
     print("Finding husimi...")
-    fids = simple_husimi(50,50, backend, dens_mat_state, nqpm, max_value = max_value)
+    fids = simple_husimi(50,50, dens_mat_state, nqpm, max_value = max_value)
     
     plt.imshow(fids, cmap='hot', interpolation='nearest')
     plt.show()
 
     return fids
-
 
 def qifs_ideal(num_shots = 1024, nqpm = 4):
     init_state_c = init_circle_aer(nqpm, 2)
@@ -302,7 +357,7 @@ def qifs_ideal(num_shots = 1024, nqpm = 4):
     dens_mat_state = result_state.analysis_results("state", dataframe = True).iloc[0].value
 
     print("Finding husimi...")
-    fids = simple_husimi(50,50, backend, dens_mat_state, nqpm, max_value = 6*numpy.pi)
+    fids = simple_husimi(50,50, dens_mat_state, nqpm, max_value = 6*numpy.pi)
 
     plt.imshow(fids, cmap='hot', interpolation='nearest')
     plt.show()
@@ -329,7 +384,7 @@ def qifs(num_shots=128, nqpm = 4, occupied_states = 2, num_states = 10):
         dens_mat_state = dens_mat_state + (1/num_states)*dens_mat_states[i]
 
     print("Finding husimi...")
-    fids = simple_husimi(50,50, backend, dens_mat_state, nqpm)
+    fids = simple_husimi(50,50, dens_mat_state, nqpm)
 
     plt.imshow(fids, cmap='hot', interpolation='nearest')
     plt.show()
@@ -338,11 +393,13 @@ def qifs(num_shots=128, nqpm = 4, occupied_states = 2, num_states = 10):
     #tomo_state_ideal = StateTomography(init_state_c, measurement_indices=[0])
 
     #dens_mat_state_ideal = tomo_state_ideal.run(ideal_backend, shots = num_shots).block_for_results().analysis_results("state", dataframe = True).iloc[0].value
-    #fids = simple_husimi(5, 5, backend, dens_mat_state)
+    #fids = simple_husimi(5, 5, dens_mat_state)
 
     return fids
 
 if __name__ == "__main__":
+    #qifs_gaussian()
+    #qifs_ideal()
+    qifs_check(num_shots = 1024)
+    #qifs_animation(nqpm = 4)
     #qifs(num_states = 20)
-    #qifs_gaussian(nqpm = 4)
-    qifs_animation(nqpm = 4)

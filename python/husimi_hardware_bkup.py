@@ -29,7 +29,7 @@ def append_displacement_circuit(x, y, xmax, ymax, qmr, circuit):
 def simple_husimi(xmax, ymax, backend, dens_mat, nqpm, max_value = 2*numpy.pi):
     fids = numpy.zeros((xmax, ymax))
 
-    (qmr_ref, c_ref) = init_gaussian(nqpm)
+    (qmr_ref, c_ref) = init_bosonic_gaussian(nqpm)
 
     state_ref, _, _ = bosonic_qiskit.util.simulate(c_ref)
 
@@ -53,11 +53,11 @@ def find_fidelity(mat1, mat2):
     return numpy.real(numpy.trace(sqrtm(sqrt_mat1 @ mat2 @ sqrt_mat1))**2)
 
 def husimi_with_duplicates(xmax, ymax, backend, dens_mat, nqpm, max_value = 2*numpy.pi, num_ancillary = 3):
-    fids = numpy.zeros((xmax, ymax, 8))
+    fids = numpy.zeros((xmax, ymax))
 
-    (qmr_ref, c_ref) = init_gaussian(nqpm)
+    (qmr_ref, c_ref) = init_bosonic_gaussian(nqpm)
 
-    #state_ref, _, _ = bosonic_qiskit.util.simulate(c_ref)
+    state_ref, _, _ = bosonic_qiskit.util.simulate(c_ref)
 
     total_objects = num_ancillary**2
 
@@ -73,7 +73,7 @@ def husimi_with_duplicates(xmax, ymax, backend, dens_mat, nqpm, max_value = 2*nu
                 dens_mat_mini = dens_mat.data[k*stride:(k+1)*stride, k*stride:(k+1)*stride]
                 new_fid = find_fidelity(dens_mat_mini, dens_mat_ref.data) / total_objects
 
-                fids[i][j][k] = new_fid
+                fids[i][j] = fids[i][j] + new_fid
     return fids
 
 
@@ -84,6 +84,11 @@ def find_backend():
     return AerSimulator.from_backend(backend)
 
 def init_gaussian(nqpm, ancillary_bits = 0):
+    total_bits = nqpm + ancillary_bits
+    init_c = QuantumCircuit(total_bits, total_bits)
+    return init_c
+
+def init_bosonic_gaussian(nqpm, ancillary_bits = 0):
     qmr = bosonic_qiskit.QumodeRegister(num_qumodes=1, num_qubits_per_qumode=nqpm)
     if ancillary_bits > 0:
         qr = qiskit.QuantumRegister(size=ancillary_bits)
@@ -104,6 +109,7 @@ def init_gaussian(nqpm, ancillary_bits = 0):
         init_c.cv_initialize(0, qmr[0])
 
         return (qmr, init_c)
+
 
 # swirling
 def init_circle_set(N, M, num_circuits):
@@ -171,68 +177,27 @@ def rotate_in_phase_space(val, theta):
 def generate_electrons(matA, matAdag, radius, nqpm):
 
     # top and bottom
-    #matD1 = numpy.eye(2**nqpm)
-    #matD2 = numpy.eye(2**nqpm)
-    matD1 = generate_mat_displacement(matA,matAdag, radius*1j)
-    matD2 = generate_mat_displacement(matA,matAdag,-radius*1j)
+    matD1 = numpy.eye(2**nqpm)
+    matD2 = numpy.eye(2**nqpm)
+    #matD1 = generate_mat_displacement(matA,matAdag, radius*1j)
+    #matD2 = generate_mat_displacement(matA,matAdag,-radius*1j)
 
     # one arc
-    #matD3 = numpy.eye(2**nqpm)
-    #matD4 = numpy.eye(2**nqpm)
-    matD3 = generate_mat_displacement(matA, matAdag, rotate_in_phase_space(radius*1j, numpy.pi/3))
-    matD4 = generate_mat_displacement(matA,matAdag, rotate_in_phase_space(radius*1j, -2*numpy.pi/3))
+    matD3 = numpy.eye(2**nqpm)
+    matD4 = numpy.eye(2**nqpm)
+    #matD3 = generate_mat_displacement(matA, matAdag, rotate_in_phase_space(radius*1j, numpy.pi/3))
+    #matD4 = generate_mat_displacement(matA,matAdag, rotate_in_phase_space(radius*1j, -2*numpy.pi/3))
 
     # the other arc
-    #matD5 = numpy.eye(2**nqpm)
-    #matD6 = numpy.eye(2**nqpm)
-    matD5 = generate_mat_displacement(matA,matAdag, rotate_in_phase_space(radius*1j, 2*numpy.pi/3))
-    matD6 = generate_mat_displacement(matA,matAdag, rotate_in_phase_space(radius*1j, -numpy.pi/3))
+    matD5 = numpy.eye(2**nqpm)
+    matD6 = numpy.eye(2**nqpm)
+    #matD5 = generate_mat_displacement(matA,matAdag, rotate_in_phase_space(radius*1j, 2*numpy.pi/3))
+    #matD6 = generate_mat_displacement(matA,matAdag, rotate_in_phase_space(radius*1j, -numpy.pi/3))
 
     # both nucleii
     matD7 = numpy.eye(2**nqpm)
     matD8 = numpy.eye(2**nqpm)
     return block_diag(matD1,matD2, matD3, matD4, matD5, matD6, matD7, matD8)
-
-def generate_mat_diplication(matA,matAdag,alpha1,alpha2):
-    matD1 = generate_mat_displacement(matA,matAdag,alpha1)
-    matD2 = generate_mat_displacement(matA,matAdag,alpha2)
-    return block_diag(matD1,matD2)
-
-def qifs_check(num_shots = 1024, nqpm = 4, max_value = 2*numpy.pi):
-    d0 = 2**nqpm
-
-    ancillary_bits = 1
-
-    qubit_list = list(range(nqpm + ancillary_bits))
-
-    qmr, qr, init_state_c = init_gaussian(nqpm, ancillary_bits = ancillary_bits)
-    init_state_c = decompose_init_circuit(init_state_c)
-    backend = AerSimulator()
-
-    matAdag = numpy.zeros((d0, d0), dtype=complex)
-    for i in range(d0-1):
-        matAdag[i+1, i] = numpy.sqrt(i+1)
-    matA = matAdag.T
-
-    #mat_diplication = generate_mat_diplication(matA,matAdag,-4.0,4.0+1j)
-    #gate_duplication = UnitaryGate(mat_diplication, label="electrons")
-    #init_state_c.append(gate_duplication, qubit_list)
-
-    tomo_state = StateTomography(init_state_c, measurement_indices=qubit_list)
-
-    result_state = tomo_state.run(backend, shots = num_shots).block_for_results()
-
-    dens_mat_state = result_state.analysis_results("state", dataframe = True).iloc[0].value
-
-    print("Finding husimi...")
-    fids = husimi_with_duplicates(50,50, backend, dens_mat_state, nqpm, max_value = max_value, num_ancillary = 1)
-
-    #plt.imshow(fids, cmap='hot', interpolation='nearest')
-    #plt.show()
-
-    return fids
-
-
 
 def qifs_animation(num_shots = 1024, nqpm = 4, max_value = 2*numpy.pi):
 
@@ -242,8 +207,8 @@ def qifs_animation(num_shots = 1024, nqpm = 4, max_value = 2*numpy.pi):
 
     qubit_list = list(range(nqpm + ancillary_bits))
 
-    qmr, qr, init_state_c = init_gaussian(nqpm, ancillary_bits = ancillary_bits)
-    init_state_c = decompose_init_circuit(init_state_c)
+    #state_c = init_gaussian(nqpm, ancillary_bits = ancillary_bits)
+    state_c = init_circle_aer(nqpm+ancillary_bits, 2)
     backend = AerSimulator()
 
     matAdag = numpy.zeros((d0, d0), dtype=complex)
@@ -254,9 +219,12 @@ def qifs_animation(num_shots = 1024, nqpm = 4, max_value = 2*numpy.pi):
     electrons = generate_electrons(matA, matAdag, 2, nqpm)
 
     gate_electrons = UnitaryGate(electrons, label="electrons")
-    init_state_c.append(gate_electrons, qubit_list)
+    state_c.append(gate_electrons, qubit_list)
 
-    tomo_state = StateTomography(init_state_c, measurement_indices=qubit_list)
+    #for n in range(nqpm + ancillary_bits):
+    #    state_c.measure(n, n)
+
+    tomo_state = StateTomography(state_c, measurement_indices=qubit_list)
 
     result_state = tomo_state.run(backend, shots = num_shots).block_for_results()
 
@@ -265,8 +233,8 @@ def qifs_animation(num_shots = 1024, nqpm = 4, max_value = 2*numpy.pi):
     print("Finding husimi...")
     fids = husimi_with_duplicates(50,50, backend, dens_mat_state, nqpm, max_value = max_value)
 
-    #plt.imshow(fids, cmap='hot', interpolation='nearest')
-    #plt.show()
+    plt.imshow(fids, cmap='hot', interpolation='nearest')
+    plt.show()
 
     return fids
 
@@ -309,7 +277,7 @@ def qifs_ideal(num_shots = 1024, nqpm = 4):
 
     return fids
 
-def qifs(num_shots=128, nqpm = 4, occupied_states = 2, num_states = 10):
+def qifs(num_shots=128, nqpm = 5, occupied_states = 2, num_states = 10):
     '''
     (qmr0, init_state_c) = init_gaussian(nqpm)
 
@@ -346,3 +314,4 @@ if __name__ == "__main__":
     #qifs(num_states = 20)
     #qifs_gaussian(nqpm = 4)
     qifs_animation(nqpm = 4)
+    #qifs_ideal(nqpm = 4)
