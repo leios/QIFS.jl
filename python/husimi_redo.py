@@ -26,8 +26,7 @@ def rotate_in_phase_space(val, theta):
     im = val.real*numpy.sin(theta) + val.imag*numpy.cos(theta)
     return re + im*1j
 
-def generate_mat_displacement(nqpm,alpha):
-    N = 2**nqpm
+def generate_mat_displacement(N,alpha):
     matAdag = numpy.zeros((N, N), dtype=complex)
     for i in range(N-1):
         matAdag[i+1, i] = numpy.sqrt(i+1)
@@ -84,8 +83,9 @@ def generate_mat_d_shearingx2(nqpm, beta):
     return block_diag(matD1,matD1)
 
 def generate_mat_d_displacement(nqpm,alpha1,alpha2):
-    matD1 = generate_mat_displacement(nqpm,alpha1)
-    matD2 = generate_mat_displacement(nqpm,alpha2)
+    N = 2**nqpm
+    matD1 = generate_mat_displacement(N,alpha1)
+    matD2 = generate_mat_displacement(N,alpha2)
     return block_diag(matD1,matD2)
 
 def make_displacement_circuit(x, y, xmax, ymax, num_bits, max_value = 2*numpy.pi):
@@ -95,7 +95,7 @@ def make_displacement_circuit(x, y, xmax, ymax, num_bits, max_value = 2*numpy.pi
 
     d = 2**num_bits
 
-    mat_displacement = generate_mat_displacement(num_bits, alpha)
+    mat_displacement = generate_mat_displacement(d, alpha)
 
     gate_displacement = UnitaryGate(mat_displacement, label="displacement_operator")
     qc = QuantumCircuit(num_bits)
@@ -212,25 +212,79 @@ def init_ring(N):
 #------------------------------------------------------------------------------#
 # ANIMATION
 #------------------------------------------------------------------------------#
-def generate_electrons(matA, matAdag, radius, nqpm):
+def shear_electrons(nqpm, beta):
+    N = 2**nqpm
+
+    matD = generate_mat_shearingx2(N, beta)
+    matD2 = numpy.eye(2**nqpm)
+
+    return block_diag(matD,matD, matD, matD, matD, matD, matD2, matD2)
+
+def displace_electrons(nqpm, d):
+    N = 2**nqpm
+
+    matD = generate_mat_displacement(N, d)
+    matD2 = numpy.eye(2**nqpm)
+    return block_diag(matD,matD, matD, matD, matD, matD, matD2, matD2)
+
+def rotate_electrons(nqpm):
+    N = 2**nqpm
+
+    matD1 = numpy.eye(2**nqpm)
+    matD2 = generate_mat_rotation(N,numpy.pi/3)
+
+    matD3 = generate_mat_rotation(N,2*numpy.pi/3)
+    matD4 = generate_mat_rotation(N,numpy.pi)
+
+    matD5 = generate_mat_rotation(N,4*numpy.pi/3)
+    matD6 = generate_mat_rotation(N,5*numpy.pi/3)
+
+    matD7 = matD1
+    matD8 = matD1
+    return block_diag(matD1,matD2, matD3, matD4, matD5, matD6, matD7, matD8)
+
+def squeeze_electrons(nqpm):
+    N = 2**nqpm
+
+    dist = numpy.log(2.5)
+    # top and bottom
+    matD1 = generate_mat_squeeze(N, dist, 0)
+    matD4 = generate_mat_squeeze(N, dist, 0)
+
+    # one arc
+    matD2 = generate_mat_squeeze(N, dist, numpy.pi/3)
+    matD5 = generate_mat_squeeze(N, dist, numpy.pi/3)
+
+    # the other arc
+    matD3 = generate_mat_squeeze(N, dist, 2*numpy.pi/3)
+    matD6 = generate_mat_squeeze(N, dist, 2*numpy.pi/3)
+
+    # both nucleii
+    matD7 = numpy.eye(2**nqpm)
+    matD8 = numpy.eye(2**nqpm)
+    return block_diag(matD1,matD2, matD3, matD4, matD5, matD6, matD7, matD8)
+
+def generate_electrons(nqpm, radius):
+
+    N = 2**nqpm
 
     # top and bottom
     #matD1 = numpy.eye(2**nqpm)
     #matD2 = numpy.eye(2**nqpm)
-    matD1 = generate_mat_displacement(matA,matAdag, radius*1j)
-    matD2 = generate_mat_displacement(matA,matAdag,-radius*1j)
+    matD1 = generate_mat_displacement(N, radius*1j)
+    matD2 = generate_mat_displacement(N,-radius*1j)
 
     # one arc
     #matD3 = numpy.eye(2**nqpm)
     #matD4 = numpy.eye(2**nqpm)
-    matD3 = generate_mat_displacement(matA, matAdag, rotate_in_phase_space(radius*1j, numpy.pi/3))
-    matD4 = generate_mat_displacement(matA,matAdag, rotate_in_phase_space(radius*1j, -2*numpy.pi/3))
+    matD3 = generate_mat_displacement(N, rotate_in_phase_space(radius*1j, numpy.pi/3))
+    matD4 = generate_mat_displacement(N, rotate_in_phase_space(radius*1j, -2*numpy.pi/3))
 
     # the other arc
     #matD5 = numpy.eye(2**nqpm)
     #matD6 = numpy.eye(2**nqpm)
-    matD5 = generate_mat_displacement(matA,matAdag, rotate_in_phase_space(radius*1j, 2*numpy.pi/3))
-    matD6 = generate_mat_displacement(matA,matAdag, rotate_in_phase_space(radius*1j, -numpy.pi/3))
+    matD5 = generate_mat_displacement(N, rotate_in_phase_space(radius*1j, 2*numpy.pi/3))
+    matD6 = generate_mat_displacement(N, rotate_in_phase_space(radius*1j, -numpy.pi/3))
 
     # both nucleii
     matD7 = numpy.eye(2**nqpm)
@@ -289,8 +343,9 @@ def qifs_check(num_shots = 1024, nqpm = 6, max_value = 6*numpy.pi):
 
 
 
-def qifs_animation(num_shots = 1024, nqpm = 4, max_value = 4*numpy.pi):
+def qifs_animation(num_shots = 1024, nqpm = 4, max_value = 6*numpy.pi):
 
+    start = time.time()
     d0 = 2**nqpm
 
     ancillary_bits = 3
@@ -308,20 +363,49 @@ def qifs_animation(num_shots = 1024, nqpm = 4, max_value = 4*numpy.pi):
         matAdag[i+1, i] = numpy.sqrt(i+1)
     matA = matAdag.T
 
-    electrons = generate_electrons(matA, matAdag, 4, nqpm)
+    # shear
+    shear_mat = shear_electrons(nqpm, 5)
+    shear_gate = UnitaryGate(shear_mat, label="shearing")
+    init_state_c.append(shear_gate, qubit_list)
 
-    gate_electrons = UnitaryGate(electrons, label="electrons")
-    init_state_c.append(gate_electrons, qubit_list)
+    # displace
+    displacement_mat = displace_electrons(nqpm, 5)
+    displacement_gate = UnitaryGate(displacement_mat, label="displace")
+    init_state_c.append(displacement_gate, qubit_list)
 
+    # rotate
+    rotation_mat = rotate_electrons(nqpm)
+    rotation_gate = UnitaryGate(rotation_mat, label="rotate")
+    init_state_c.append(rotation_gate, qubit_list)
+
+    # squeeze
+    squeeze_mat = squeeze_electrons(nqpm)
+    squeeze_gate = UnitaryGate(squeeze_mat, label="squeeze")
+    init_state_c.append(squeeze_gate, qubit_list)
+
+
+    #electrons = generate_electrons(nqpm, 4)
+    #gate_electrons = UnitaryGate(electrons, label="electrons")
+    #init_state_c.append(gate_electrons, qubit_list)
+
+    print(time.time() - start)
+    print("Running tomography...")
     tomo_state = StateTomography(init_state_c, measurement_indices=qubit_list)
 
     result_state = tomo_state.run(backend, shots = num_shots).block_for_results()
 
     dens_mat_state = result_state.analysis_results("state", dataframe = True).iloc[0].value
 
+    filename = make_filename(0)
+
+    numpy.save(filename, dens_mat_state.data)
+
+    print(time.time() - start)
     print("Finding husimi...")
     fids = husimi_with_duplicates(50,50, dens_mat_state, nqpm, max_value = max_value)
 
+    print(time.time() - start)
+    print("Plotting...")
     plt.imshow(fids, cmap='hot', interpolation='nearest')
     plt.show()
 
@@ -400,6 +484,6 @@ def qifs(num_shots=128, nqpm = 4, occupied_states = 2, num_states = 10):
 if __name__ == "__main__":
     #qifs_gaussian()
     #qifs_ideal()
-    qifs_check(num_shots = 1024)
-    #qifs_animation(nqpm = 4)
+    #qifs_check(num_shots = 1024)
+    qifs_animation()
     #qifs(num_states = 20)
