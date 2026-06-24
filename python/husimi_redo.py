@@ -21,6 +21,9 @@ from qiskit_experiments.library import StateTomography
 def make_filename(i):
     return "dens%04d.npy" % i
 
+def make_fid_filename(i):
+    return "fids%04d.csv" % i
+
 def rotate_in_phase_space(val, theta):
     re = val.real*numpy.cos(theta) - val.imag*numpy.sin(theta)
     im = val.real*numpy.sin(theta) + val.imag*numpy.cos(theta)
@@ -48,7 +51,7 @@ def generate_mat_squeeze(N, r, theta):
 
     chi = r * numpy.exp(theta * 1j)
 
-    matS = (numpy.conj(chi)*matA**2 - chi*matAdag**2)/2
+    matS = (numpy.linalg.matrix_power(numpy.conj(chi)*matA,2) - numpy.linalg.matrix_power(chi*matAdag,2))/2
     matS = expm(matS)
 
     return matS
@@ -62,7 +65,7 @@ def generate_mat_shearingx2(N, beta):
     matX = (matAdag+matA)/numpy.sqrt(2)
     matP = 1j*(matAdag-matA)/numpy.sqrt(2)
 
-    matS = expm(1j*(beta/3)*matX**3)
+    matS = expm(1j*(beta/3)*numpy.linalg.matrix_power(matX,3))
 
     return matS
 
@@ -227,42 +230,70 @@ def displace_electrons(nqpm, d):
     matD2 = numpy.eye(2**nqpm)
     return block_diag(matD,matD, matD, matD, matD, matD, matD2, matD2)
 
-def rotate_electrons(nqpm):
+def rotate_electrons(nqpm, time_ratio):
     N = 2**nqpm
 
-    matD1 = numpy.eye(2**nqpm)
-    matD2 = generate_mat_rotation(N,numpy.pi/3)
+    offset = numpy.pi*time_ratio
 
-    matD3 = generate_mat_rotation(N,2*numpy.pi/3)
-    matD4 = generate_mat_rotation(N,numpy.pi)
+    matD1 = generate_mat_rotation(N, offset)
+    matD2 = generate_mat_rotation(N,numpy.pi/3+offset)
 
-    matD5 = generate_mat_rotation(N,4*numpy.pi/3)
-    matD6 = generate_mat_rotation(N,5*numpy.pi/3)
+    matD3 = generate_mat_rotation(N,2*numpy.pi/3+offset)
+    matD4 = generate_mat_rotation(N,numpy.pi+offset)
+
+    matD5 = generate_mat_rotation(N,4*numpy.pi/3+offset)
+    matD6 = generate_mat_rotation(N,5*numpy.pi/3+offset)
 
     matD7 = matD1
     matD8 = matD1
     return block_diag(matD1,matD2, matD3, matD4, matD5, matD6, matD7, matD8)
 
-def squeeze_electrons(nqpm):
+def squeeze_electrons(nqpm, scale):
     N = 2**nqpm
 
-    dist = numpy.log(2.5)
+    dist = numpy.log(scale)
     # top and bottom
     matD1 = generate_mat_squeeze(N, dist, 0)
     matD4 = generate_mat_squeeze(N, dist, 0)
 
     # one arc
-    matD2 = generate_mat_squeeze(N, dist, numpy.pi/3)
-    matD5 = generate_mat_squeeze(N, dist, numpy.pi/3)
+    #matD2 = generate_mat_squeeze(N, dist, numpy.pi/3)
+    #matD5 = generate_mat_squeeze(N, dist, numpy.pi/3)
+    matD2 = generate_mat_squeeze(N, dist, 0)
+    matD5 = generate_mat_squeeze(N, dist, 0)
 
     # the other arc
-    matD3 = generate_mat_squeeze(N, dist, 2*numpy.pi/3)
-    matD6 = generate_mat_squeeze(N, dist, 2*numpy.pi/3)
+    #matD3 = generate_mat_squeeze(N, dist, 2*numpy.pi/3)
+    #matD6 = generate_mat_squeeze(N, dist, 2*numpy.pi/3)
+    matD3 = generate_mat_squeeze(N, dist, 0)
+    matD6 = generate_mat_squeeze(N, dist, 0)
 
     # both nucleii
     matD7 = numpy.eye(2**nqpm)
     matD8 = numpy.eye(2**nqpm)
     return block_diag(matD1,matD2, matD3, matD4, matD5, matD6, matD7, matD8)
+
+def rotate_electrons_2(nqpm):
+
+    N = 2**nqpm
+
+    # top and bottom
+    matD1 = numpy.eye(2**nqpm)
+    matD4 = matD1
+
+    # one arc
+    matD2 = generate_mat_rotation(N, numpy.pi/3)
+    matD5 = generate_mat_rotation(N, numpy.pi/3)
+
+    # the other arc
+    matD3 = generate_mat_rotation(N, 2*numpy.pi/3)
+    matD6 = generate_mat_rotation(N, 2*numpy.pi/3)
+
+    # both nucleii
+    matD7 = matD1
+    matD8 = matD1
+    return block_diag(matD1,matD2, matD3, matD4, matD5, matD6, matD7, matD8)
+
 
 def generate_electrons(nqpm, radius):
 
@@ -295,7 +326,7 @@ def generate_electrons(nqpm, radius):
 # QIFS ROUTINES
 #------------------------------------------------------------------------------#
 
-def qifs_check(num_shots = 1024, nqpm = 6, max_value = 6*numpy.pi):
+def qifs_check(num_shots = 1024, nqpm = 4, max_value = 4*numpy.pi):
     start = time.time()
     d0 = 2**nqpm
 
@@ -304,22 +335,24 @@ def qifs_check(num_shots = 1024, nqpm = 6, max_value = 6*numpy.pi):
     qubit_list = list(range(nqpm + ancillary_bits))
 
     init_state_c = init_gaussian(nqpm, ancillary_bits = ancillary_bits)
+    #init_state_c = init_circle_aer(nqpm+ancillary_bits, nqpm-2)
     init_state_c.h(nqpm+ancillary_bits-1)
     backend = AerSimulator()
 
-    mat_shearingx2 = generate_mat_d_shearingx2(nqpm, 10.0)
+    mat_shearingx2 = generate_mat_d_shearingx2(nqpm, 0.333)
     gate_shearingx2 = UnitaryGate(mat_shearingx2, label = "shearingx2")
     init_state_c.append(gate_shearingx2, qubit_list)
 
-    mat_displacement = generate_mat_d_displacement(nqpm, 3.0j, 3.0j)
-    gate_displacement = UnitaryGate(mat_displacement, label="displacement")
-    init_state_c.append(gate_displacement, qubit_list)
+    #mat_displacement = generate_mat_d_displacement(nqpm, 3.0j, 3.0j)
+    #gate_displacement = UnitaryGate(mat_displacement, label="displacement")
+    #init_state_c.append(gate_displacement, qubit_list)
 
-    mat_rot = generate_mat_d_rotation(nqpm, 0.5, -.5)
-    gate_rot = UnitaryGate(mat_rot, label="rot")
-    init_state_c.append(gate_rot, qubit_list)
+    #mat_rot = generate_mat_d_rotation(nqpm, 0.5, -.5)
+    #gate_rot = UnitaryGate(mat_rot, label="rot")
+    #init_state_c.append(gate_rot, qubit_list)
 
-    #mat_squeeze = generate_mat_d_squeeze(nqpm, 1.0, 0.0)
+    #mat_squeeze = generate_mat_d_squeeze(nqpm, numpy.log(2.0), 0.5)
+    #mat_squeeze = generate_mat_d_squeeze(nqpm, numpy.log(10.0), 0.0)
     #gate_squeeze = UnitaryGate(mat_squeeze, label = "squeeze")
     #init_state_c.append(gate_squeeze, qubit_list)
 
@@ -341,10 +374,11 @@ def qifs_check(num_shots = 1024, nqpm = 6, max_value = 6*numpy.pi):
 
     return fids
 
+def qifs_animation(num_shots = 1024, nqpm = 4, max_value = 10, total_time = 1):
 
-
-def qifs_animation(num_shots = 1024, nqpm = 4, max_value = 6*numpy.pi):
-
+    fps = 30
+    #total_frames = fps * total_time
+    total_frames = 1
     start = time.time()
     d0 = 2**nqpm
 
@@ -352,79 +386,96 @@ def qifs_animation(num_shots = 1024, nqpm = 4, max_value = 6*numpy.pi):
 
     qubit_list = list(range(nqpm + ancillary_bits))
 
-    init_state_c = init_gaussian(nqpm, ancillary_bits = ancillary_bits)
-    for i in range(ancillary_bits):
-        init_state_c.h(nqpm+ancillary_bits-1-i)
+    for frame in range(total_frames):
 
-    backend = AerSimulator()
+        time_ratio = frame / fps
+        init_state_c = init_gaussian(nqpm, ancillary_bits = ancillary_bits)
+        #init_state_c = init_circle_aer(nqpm+ancillary_bits, 2)
+        for i in range(ancillary_bits):
+            init_state_c.h(nqpm+ancillary_bits-1-i)
 
-    matAdag = numpy.zeros((d0, d0), dtype=complex)
-    for i in range(d0-1):
-        matAdag[i+1, i] = numpy.sqrt(i+1)
-    matA = matAdag.T
+        backend = AerSimulator()
 
-    # shear
-    shear_mat = shear_electrons(nqpm, 5)
-    shear_gate = UnitaryGate(shear_mat, label="shearing")
-    init_state_c.append(shear_gate, qubit_list)
+        matAdag = numpy.zeros((d0, d0), dtype=complex)
+        for i in range(d0-1):
+            matAdag[i+1, i] = numpy.sqrt(i+1)
+        matA = matAdag.T
 
-    # displace
-    displacement_mat = displace_electrons(nqpm, 5)
-    displacement_gate = UnitaryGate(displacement_mat, label="displace")
-    init_state_c.append(displacement_gate, qubit_list)
+        # shear
+        shear_mat = shear_electrons(nqpm, 0.3333333)
+        shear_gate = UnitaryGate(shear_mat, label="shearing")
+        init_state_c.append(shear_gate, qubit_list)
 
-    # rotate
-    rotation_mat = rotate_electrons(nqpm)
-    rotation_gate = UnitaryGate(rotation_mat, label="rotate")
-    init_state_c.append(rotation_gate, qubit_list)
+        # displace
+        displacement_mat = displace_electrons(nqpm, 8.0j)
+        displacement_gate = UnitaryGate(displacement_mat, label="displace")
+        init_state_c.append(displacement_gate, qubit_list)
 
-    # squeeze
-    squeeze_mat = squeeze_electrons(nqpm)
-    squeeze_gate = UnitaryGate(squeeze_mat, label="squeeze")
-    init_state_c.append(squeeze_gate, qubit_list)
+        # rotate
+        rotation_mat = rotate_electrons(nqpm, time_ratio)
+        rotation_gate = UnitaryGate(rotation_mat, label="rotate")
+        init_state_c.append(rotation_gate, qubit_list)
 
+        # squeeze
+        squeeze_mat = squeeze_electrons(nqpm, 1.5)
+        squeeze_gate = UnitaryGate(squeeze_mat, label="squeeze")
+        init_state_c.append(squeeze_gate, qubit_list)
 
-    #electrons = generate_electrons(nqpm, 4)
-    #gate_electrons = UnitaryGate(electrons, label="electrons")
-    #init_state_c.append(gate_electrons, qubit_list)
+        # rotate
+        rotation_2_mat = rotate_electrons_2(nqpm)
+        rotation_2_gate = UnitaryGate(rotation_2_mat, label="rotate_2")
+        init_state_c.append(rotation_2_gate, qubit_list)
 
-    print(time.time() - start)
-    print("Running tomography...")
-    tomo_state = StateTomography(init_state_c, measurement_indices=qubit_list)
+        #electrons = generate_electrons(nqpm, 4)
+        #gate_electrons = UnitaryGate(electrons, label="electrons")
+        #init_state_c.append(gate_electrons, qubit_list)
+    
+        print(time.time() - start)
+        print("Running tomography...")
+        tomo_state = StateTomography(init_state_c, measurement_indices=qubit_list)
 
-    result_state = tomo_state.run(backend, shots = num_shots).block_for_results()
+        result_state = tomo_state.run(backend, shots = num_shots).block_for_results()
 
-    dens_mat_state = result_state.analysis_results("state", dataframe = True).iloc[0].value
+        dens_mat_state = result_state.analysis_results("state", dataframe = True).iloc[0].value
 
-    filename = make_filename(0)
+        filename = make_filename(frame)
+        numpy.save(filename, dens_mat_state.data)
 
-    numpy.save(filename, dens_mat_state.data)
+        print(time.time() - start)
+        print("Finding husimi...")
+        fids = husimi_with_duplicates(50,50, dens_mat_state, nqpm, max_value = max_value)
 
-    print(time.time() - start)
-    print("Finding husimi...")
-    fids = husimi_with_duplicates(50,50, dens_mat_state, nqpm, max_value = max_value)
-
-    print(time.time() - start)
-    print("Plotting...")
-    plt.imshow(fids, cmap='hot', interpolation='nearest')
-    plt.show()
-
-    return fids
+        print(time.time() - start)
+        #print("Plotting...")
+        #plt.imshow(fids, cmap='hot', interpolation='nearest')
+        #plt.show()
+        print("Outputting...")
+        fid_filename = make_fid_filename(frame)
+        numpy.savetxt(fid_filename, fids.T, delimiter=",")
 
 
 def qifs_gaussian(num_shots = 1024, nqpm = 4, max_value = 2*numpy.pi):
+    start = time.time()
     init_state_c = init_gaussian(nqpm)
-    backend = AerSimulator()
+    backend = find_backend()
 
+    print(time.time() - start)
+    print("Running tomography...")
     tomo_state = StateTomography(init_state_c, measurement_indices=[i for i in range(0, nqpm)])
 
     result_state = tomo_state.run(backend, shots = num_shots).block_for_results()
 
     dens_mat_state = result_state.analysis_results("state", dataframe = True).iloc[0].value
 
+    print(time.time() - start)
     print("Finding husimi...")
     fids = simple_husimi(50,50, dens_mat_state, nqpm, max_value = max_value)
     
+    print(time.time() - start)
+    print("Plotting...")
+    filename = make_filename(0)
+    numpy.save(filename, dens_mat_state.data)
+
     plt.imshow(fids, cmap='hot', interpolation='nearest')
     plt.show()
 
@@ -482,8 +533,8 @@ def qifs(num_shots=128, nqpm = 4, occupied_states = 2, num_states = 10):
     return fids
 
 if __name__ == "__main__":
-    #qifs_gaussian()
+    #qifs_gaussian(nqpm = 3, num_shots = 1024)
     #qifs_ideal()
-    #qifs_check(num_shots = 1024)
+    #qifs_check()
     qifs_animation()
     #qifs(num_states = 20)
