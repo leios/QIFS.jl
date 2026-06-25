@@ -35,3 +35,9 @@ notes/*
 .DS_Store
 
 *.out
+*.csv
+*.swp
+*.txt
+
+*__py*
+*.npy

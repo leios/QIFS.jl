@@ -43,7 +43,6 @@ __verse electrons(quibble_point_2D pt, float time |
     float stretch_factor = 1.5;
 
     if (_i > num_ignore){
-
         pt = rotate(pt, M_PI*time);
         out_pt = stretch(pt, stretch_factor);
         histogram_output_prgba8888(out_pt, qcolor, cam, qps);
